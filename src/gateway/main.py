@@ -2,6 +2,7 @@ import logging
 import socket
 import multiprocessing
 from gateway.message_handler import MessageHandler
+
 # from common import middleware
 from common import message_protocol
 
@@ -25,7 +26,9 @@ def handle_client_request(client_socket, msg_handler):
             if message[0] == message_protocol.external.MsgType.TX:
                 # serialized_message = msg_handler.serialize_tx_message(message[1])
                 # input_queue.send(serialized_message)
-                print(f"[TX] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}")
+                print(
+                    f"[TX] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}"
+                )
                 message_protocol.external.send_msg(
                     client_socket, message_protocol.external.MsgType.ACK
                 )
@@ -33,7 +36,9 @@ def handle_client_request(client_socket, msg_handler):
             elif message[0] == message_protocol.external.MsgType.ACC:
                 # serialized_message = msg_handler.serialize_acc_message(message[1])
                 # input_queue.send(serialized_message)
-                print(f"[ACC] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}")
+                print(
+                    f"[ACC] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}"
+                )
                 message_protocol.external.send_msg(
                     client_socket, message_protocol.external.MsgType.ACK
                 )
@@ -46,7 +51,9 @@ def handle_client_request(client_socket, msg_handler):
                 )
                 eof_count += 1
                 if eof_count == 2:
-                    logging.info("All data received for client_id=%s", msg_handler.client_id)
+                    logging.info(
+                        "All data received for client_id=%s", msg_handler.client_id
+                    )
                     confirmation = (
                         f"Confirmacion: todos los datos recibidos (client_id={msg_handler.client_id})"
                     ).encode("utf-8")

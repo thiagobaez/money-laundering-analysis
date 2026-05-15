@@ -13,8 +13,8 @@ OUTPUT_FILE = os.environ["OUTPUT_FILE"]
 SELECTED_TX_ROWS = [0, 1, 2, 3, 4, 5, 6, 9]
 SELECTED_ACC_ROWS = [0, 1]
 
-class Client:
 
+class Client:
     def __init__(self):
         self._socket = None
         self._closed = False
