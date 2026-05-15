@@ -33,36 +33,54 @@ def _make_socket(*data_chunks):
 
 class TestUint32Roundtrip:
     def test_zero(self):
-        assert external_serializer.deserialize_uint32(
-            external_serializer.serialize_uint32(0)
-        ) == 0
+        assert (
+            external_serializer.deserialize_uint32(
+                external_serializer.serialize_uint32(0)
+            )
+            == 0
+        )
 
     def test_max(self):
-        assert external_serializer.deserialize_uint32(
-            external_serializer.serialize_uint32(2**32 - 1)
-        ) == 2**32 - 1
+        assert (
+            external_serializer.deserialize_uint32(
+                external_serializer.serialize_uint32(2**32 - 1)
+            )
+            == 2**32 - 1
+        )
 
     def test_arbitrary(self):
-        assert external_serializer.deserialize_uint32(
-            external_serializer.serialize_uint32(12345)
-        ) == 12345
+        assert (
+            external_serializer.deserialize_uint32(
+                external_serializer.serialize_uint32(12345)
+            )
+            == 12345
+        )
 
 
 class TestStringRoundtrip:
     def test_empty(self):
-        assert external_serializer.deserialize_string(
-            external_serializer.serialize_string("")
-        ) == ""
+        assert (
+            external_serializer.deserialize_string(
+                external_serializer.serialize_string("")
+            )
+            == ""
+        )
 
     def test_ascii(self):
-        assert external_serializer.deserialize_string(
-            external_serializer.serialize_string("hello")
-        ) == "hello"
+        assert (
+            external_serializer.deserialize_string(
+                external_serializer.serialize_string("hello")
+            )
+            == "hello"
+        )
 
     def test_unicode(self):
-        assert external_serializer.deserialize_string(
-            external_serializer.serialize_string("árbol")
-        ) == "árbol"
+        assert (
+            external_serializer.deserialize_string(
+                external_serializer.serialize_string("árbol")
+            )
+            == "árbol"
+        )
 
 
 # --- external.py ---

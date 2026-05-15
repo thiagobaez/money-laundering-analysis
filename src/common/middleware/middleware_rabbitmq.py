@@ -3,10 +3,11 @@ from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange
 
 
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
-
     def __init__(self, host, queue_name):
         try:
-            self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=host))
+            self.connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=host)
+            )
             self.channel = self.connection.channel()
             self.channel.queue_declare(queue=queue_name, durable=True)
             self.queue_name = queue_name
@@ -17,14 +18,14 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
+
             def nack():
                 channel.basic_nack(method.delivery_tag)
+
             on_message_callback(body, ack, nack)
 
         self.channel.basic_consume(
-            queue=self.queue_name,
-            on_message_callback=on_message,
-            auto_ack=False
+            queue=self.queue_name, on_message_callback=on_message, auto_ack=False
         )
         self.channel.start_consuming()
 
@@ -33,10 +34,10 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
     def send(self, message):
         self.channel.basic_publish(
-            exchange='',
+            exchange="",
             routing_key=self.queue_name,
             body=message,
-            properties=pika.BasicProperties(delivery_mode=2)
+            properties=pika.BasicProperties(delivery_mode=2),
         )
 
     def close(self):
@@ -47,20 +48,25 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
-
     def __init__(self, host, exchange_name, routing_keys):
         try:
-            self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=host))
+            self.connection = pika.BlockingConnection(
+                pika.ConnectionParameters(host=host)
+            )
             self.channel = self.connection.channel()
             self.exchange_name = exchange_name
             self.routing_keys = routing_keys
 
-            self.channel.exchange_declare(exchange=exchange_name, exchange_type='direct')
-            result = self.channel.queue_declare(queue='', exclusive=True)
+            self.channel.exchange_declare(
+                exchange=exchange_name, exchange_type="direct"
+            )
+            result = self.channel.queue_declare(queue="", exclusive=True)
             self.queue_name = result.method.queue
 
             for key in routing_keys:
-                self.channel.queue_bind(exchange=exchange_name, queue=self.queue_name, routing_key=key)
+                self.channel.queue_bind(
+                    exchange=exchange_name, queue=self.queue_name, routing_key=key
+                )
         except pika.exceptions.AMQPConnectionError as e:
             raise RuntimeError(f"No se pudo conectar al broker: {e}")
 
@@ -68,14 +74,14 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
+
             def nack():
                 channel.basic_nack(method.delivery_tag)
+
             on_message_callback(body, ack, nack)
 
         self.channel.basic_consume(
-            queue=self.queue_name,
-            on_message_callback=on_message,
-            auto_ack=False
+            queue=self.queue_name, on_message_callback=on_message, auto_ack=False
         )
         self.channel.start_consuming()
 
@@ -89,7 +95,7 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
                 exchange=self.exchange_name,
                 routing_key=key,
                 body=message,
-                properties=pika.BasicProperties(delivery_mode=2)
+                properties=pika.BasicProperties(delivery_mode=2),
             )
 
     def close(self):
