@@ -24,3 +24,6 @@ rabbitmq-data/
 # mypy / ruff
 .mypy_cache/
 .ruff_cache/
+
+# coverage
+.coverage
