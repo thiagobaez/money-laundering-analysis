@@ -2,12 +2,14 @@ from asyncio import IncompleteReadError
 
 from . import external_serializer
 
+import socket
 
 class MsgType:
-    DATA = 1
-    ACK = 2
-    EOF = 3
-    RESULT = 4
+    TX = 1
+    ACC = 2
+    ACK = 3
+    EOF = 4
+    RESULT = 5
 
 
 def _recv_sized(socket, size: int) -> bytes:
@@ -21,19 +23,24 @@ def _recv_sized(socket, size: int) -> bytes:
     return bytes(buf)
 
 
-def send_data(socket, payload: bytes):
-    msg = external_serializer.serialize_uint32(MsgType.DATA)
+def send_data(socket, payload: bytes, msg_type):
+    msg = external_serializer.serialize_uint32(msg_type)
     msg += external_serializer.serialize_uint32(len(payload))
     msg += payload
     socket.sendall(msg)
+
+
+def send_msg(socket, msg_type):
+    """Send a header-only message with no payload (ACK, EOF)."""
+    socket.sendall(external_serializer.serialize_uint32(msg_type))
 
 
 def recv_data(socket) -> bytes:
     msg_type = external_serializer.deserialize_uint32(
         _recv_sized(socket, external_serializer.UINT32_SIZE)
     )
-    if msg_type != MsgType.DATA:
-        raise ValueError(f"Expected DATA, got {msg_type}")
+    if msg_type != MsgType.RESULT:
+        raise ValueError(f"Expected RESULT, got {msg_type}")
     size = external_serializer.deserialize_uint32(
         _recv_sized(socket, external_serializer.UINT32_SIZE)
     )
@@ -48,18 +55,13 @@ def recv_msg(socket) -> tuple:
     msg_type = external_serializer.deserialize_uint32(
         _recv_sized(socket, external_serializer.UINT32_SIZE)
     )
-    if msg_type == MsgType.DATA:
+    if msg_type in (MsgType.TX, MsgType.ACC, MsgType.RESULT):
         size = external_serializer.deserialize_uint32(
             _recv_sized(socket, external_serializer.UINT32_SIZE)
         )
-        return (MsgType.DATA, _recv_sized(socket, size))
+        return (msg_type, _recv_sized(socket, size))
     if msg_type == MsgType.EOF:
         return (MsgType.EOF, None)
     if msg_type == MsgType.ACK:
         return (MsgType.ACK, None)
-    if msg_type == MsgType.RESULT:
-        size = external_serializer.deserialize_uint32(
-            _recv_sized(socket, external_serializer.UINT32_SIZE)
-        )
-        return (MsgType.RESULT, _recv_sized(socket, size))
     raise ValueError(f"Unknown message type: {msg_type}")
