@@ -45,7 +45,7 @@ class Filter:
                 return
 
             tx = self._parse_transaction(fields[1])
-            if tx.amount >= MIN_AMOUNT:
+            if tx.amount < MIN_AMOUNT:
                 self.output_queue.send(message)
 
             ack()
