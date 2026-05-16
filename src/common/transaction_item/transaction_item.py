@@ -31,7 +31,7 @@ class TransactionItem:
 
     def __lt__(self, other):
         return self.amount < other.amount
-    
+
     def __str__(self):
         return (
             f"timestamp: {self.timestamp}, "

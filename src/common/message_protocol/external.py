@@ -2,7 +2,6 @@ from asyncio import IncompleteReadError
 
 from . import external_serializer
 
-import socket
 
 class MsgType:
     DATA = 1
