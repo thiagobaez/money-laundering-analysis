@@ -1,0 +1,61 @@
+services:
+  client:
+    container_name: client
+    build:
+      context: ./src
+      dockerfile: client/Dockerfile
+    depends_on:
+      - gateway
+    environment:
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+    - INPUT_FILE=/datasets/Hipersmall_Trans.csv
+    - OUTPUT_FILE=/output/output.csv
+    volumes:
+    - ./datasets:/datasets
+    - ./output:/output
+  gateway:
+    build:
+      context: ./src/
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - INPUT_QUEUE=input_queue
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUE=results_queue
+    - PYTHONUNBUFFERED=1
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+  filter:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - ID=1
+    - INPUT_QUEUE=input_queue
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUE=results_queue
+    - MIN_AMOUNT=50
+  rabbitmq:
+    build:
+      context: ./src/rabbitmq
+      dockerfile: Dockerfile
+    container_name: rabbitmq
+    environment:
+    - RABBITMQ_LOG_LEVELS=error
+    healthcheck:
+      interval: 5s
+      retries: 10
+      start_period: 50s
+      test: rabbitmq-diagnostics check_port_connectivity
+      timeout: 3s
+    ports:
+    - 5672:5672
+    - 15672:15672

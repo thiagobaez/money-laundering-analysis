@@ -5,11 +5,10 @@ from . import external_serializer
 import socket
 
 class MsgType:
-    TX = 1
-    ACC = 2
-    ACK = 3
-    EOF = 4
-    RESULT = 5
+    DATA = 1
+    ACK = 2
+    EOF = 3
+    RESULT = 4
 
 
 def _recv_sized(socket, size: int) -> bytes:
@@ -55,7 +54,7 @@ def recv_msg(socket) -> tuple:
     msg_type = external_serializer.deserialize_uint32(
         _recv_sized(socket, external_serializer.UINT32_SIZE)
     )
-    if msg_type in (MsgType.TX, MsgType.ACC, MsgType.RESULT):
+    if msg_type in (MsgType.DATA, MsgType.RESULT):
         size = external_serializer.deserialize_uint32(
             _recv_sized(socket, external_serializer.UINT32_SIZE)
         )
