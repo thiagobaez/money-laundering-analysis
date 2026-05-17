@@ -144,10 +144,19 @@ class TestRecvMsg:
     def test_ack_message(self):
         assert recv_msg(_make_socket(self._frame(MsgType.ACK))) == (MsgType.ACK, None)
 
-    def test_result_message(self):
+    @pytest.mark.parametrize(
+        "msg_type",
+        [
+            MsgType.RESULT_QUERY1,
+            MsgType.RESULT_QUERY3,
+            MsgType.RESULT_QUERY4,
+            MsgType.RESULT_QUERY5,
+        ],
+    )
+    def test_result_query_messages(self, msg_type):
         payload = b"result-payload"
-        assert recv_msg(_make_socket(self._frame(MsgType.RESULT, payload))) == (
-            MsgType.RESULT,
+        assert recv_msg(_make_socket(self._frame(msg_type, payload))) == (
+            msg_type,
             payload,
         )
 

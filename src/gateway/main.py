@@ -1,12 +1,18 @@
-import os
 import logging
 import socket
+import os
 import signal
 import multiprocessing
-import uuid
+from gateway.message_handler import MessageHandler
 from common.middleware import MessageMiddlewareQueueRabbitMQ
-from common.message_protocol import external, internal
-from common.message_protocol.external import MsgType
+from common.message_protocol import internal, external
+
+_QUERY_RESULT_TYPES = {
+    1: external.MsgType.RESULT_QUERY1,
+    3: external.MsgType.RESULT_QUERY3,
+    4: external.MsgType.RESULT_QUERY4,
+    5: external.MsgType.RESULT_QUERY5,
+}
 
 SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
@@ -15,78 +21,77 @@ INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 
 
-class MessageHandler:
-    def __init__(self):
-        self.client_id = str(uuid.uuid4())
-
-    def serialize_tx(self, fields: list) -> bytes:
-        return internal.serialize([self.client_id] + fields)
-
-    def serialize_eof(self) -> bytes:
-        return internal.serialize(internal.EOF_MESSAGE)
-
-    def deserialize_result(self, message: bytes) -> tuple | None:
-        fields = internal.deserialize(message)
-        if not isinstance(fields, list) or len(fields) < 3:
-            return None
-        if fields[0] != self.client_id:
-            return None
-        return (fields[1], fields[2])
-
-
-def handle_client_request(client_socket, message_handler):
-    output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+def handle_client_request(client_socket, msg_handler):
+    input_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
     try:
         while True:
-            msg_type, payload = external.recv_msg(client_socket)
-            if msg_type == MsgType.DATA:
-                output_queue.send(
-                    message_handler.serialize_tx(internal.deserialize(payload))
+            message = external.recv_msg(client_socket)
+
+            if message[0] == external.MsgType.DATA:
+                csv_fields = message[1].decode("utf-8").split(",")
+                input_queue.send(msg_handler.serialize_tx([csv_fields]))
+                external.send_msg(client_socket, external.MsgType.ACK)
+
+            if message[0] == external.MsgType.EOF:
+                input_queue.send(msg_handler.serialize_eof())
+                external.send_msg(client_socket, external.MsgType.ACK)
+                logging.info(
+                    "All data received for client_id=%s", msg_handler.client_id
                 )
-                external.send_data(client_socket, b"")
-            elif msg_type == MsgType.EOF:
-                output_queue.send(message_handler.serialize_eof())
-                external.send_eof(client_socket)
                 return
-    except socket.error as e:
-        logging.error(f"Socket error in handle_client_request: {e}")
-    finally:
-        output_queue.close()
 
-
-def handle_client_response(client_map):
-    input_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-
-    def _consume_result(message, ack, nack):
-        for client_id, (handler, sock) in list(client_map.items()):
-            result = handler.deserialize_result(message)
-            if result is None:
-                continue
-            query_number, data = result
-            try:
-                external.send_data(sock, internal.serialize([query_number, data]))
-                ack()
-                return
-            except socket.error as e:
-                logging.error(f"Socket error sending result to client {client_id}: {e}")
-                ack()
-                del client_map[client_id]
-                return
-        nack()
-
-    try:
-        input_queue.start_consuming(_consume_result)
+    except socket.error:
+        logging.error("The connection with the client was lost")
     except Exception as e:
-        logging.error(f"Exception in handle_client_response: {e}")
-        input_queue.stop_consuming()
+        logging.error(e)
     finally:
         input_queue.close()
 
 
+def handle_client_response(client_map):
+    output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+
+    def _consume_result(message, ack, nack):
+        client_id = None
+        try:
+            deserialized = internal.deserialize(message)
+            if not isinstance(deserialized, list) or len(deserialized) == 0:
+                ack()
+                return
+            client_id = deserialized[0]
+            if client_id not in client_map:
+                nack()
+                return
+            handler, client_socket = client_map[client_id]
+            result = handler.deserialize_result(message)
+            if result is None:
+                external.send_msg(client_socket, external.MsgType.EOF)
+                del client_map[client_id]
+            else:
+                query_id, *data = result
+                msg_type = _QUERY_RESULT_TYPES[query_id]
+                external.send_data(
+                    client_socket, ",".join(data).encode("utf-8"), msg_type
+                )
+            ack()
+        except socket.error:
+            logging.error("The connection with the client was lost")
+            if client_id is not None and client_id in client_map:
+                del client_map[client_id]
+            ack()
+        except Exception as e:
+            logging.error(e)
+            nack()
+            output_queue.stop_consuming()
+
+    output_queue.start_consuming(_consume_result)
+    output_queue.close()
+
+
 def handle_sigterm(server_socket, client_map, sigterm_received):
     server_socket.shutdown(socket.SHUT_RDWR)
-    for _, (_, sock) in list(client_map.items()):
-        sock.shutdown(socket.SHUT_RDWR)
+    for _, client_socket in client_map.values():
+        client_socket.shutdown(socket.SHUT_RDWR)
     sigterm_received.value = 1
 
 
@@ -96,40 +101,39 @@ def main():
     with multiprocessing.Manager() as manager:
         client_map = manager.dict()
         sigterm_received = manager.Value("c_short", 0)
+        with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
+            processes_pool.apply_async(handle_client_response, (client_map,))
 
-        pool = multiprocessing.Pool(processes=os.process_cpu_count())
-        pool.apply_async(handle_client_response, (client_map,))
-
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind((SERVER_HOST, SERVER_PORT))
-        server_socket.listen()
-
-        signal.signal(
-            signal.SIGTERM,
-            lambda signum, frame: handle_sigterm(
-                server_socket, client_map, sigterm_received
-            ),
-        )
-
-        try:
-            while True:
-                try:
-                    client_socket, _ = server_socket.accept()
-                    handler = MessageHandler()
-                    client_map[handler.client_id] = [handler, client_socket]
-                    pool.apply_async(handle_client_request, (client_socket, handler))
-                except socket.error as e:
-                    if sigterm_received.value == 0:
-                        logging.error(f"Socket error in accept loop: {e}")
-                        return 1
-                    else:
-                        return 0
-                except Exception as e:
-                    logging.error(f"Unexpected error in accept loop: {e}")
-                    return 2
-        finally:
-            pool.close()
-            pool.join()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+                logging.info("Listening to connections")
+                server_socket.bind((SERVER_HOST, SERVER_PORT))
+                server_socket.listen()
+                signal.signal(
+                    signal.SIGTERM,
+                    lambda _signum, _frame: handle_sigterm(
+                        server_socket, client_map, sigterm_received
+                    ),
+                )
+                while True:
+                    try:
+                        client_socket, _ = server_socket.accept()
+                        logging.info("A new client has connected")
+                        msg_handler = MessageHandler()
+                        client_map[msg_handler.client_id] = [msg_handler, client_socket]
+                        processes_pool.apply_async(
+                            handle_client_request,
+                            (client_socket, msg_handler),
+                        )
+                    except socket.error:
+                        if sigterm_received.value == 0:
+                            logging.error("The connection with the client was lost")
+                            return 1
+                        else:
+                            return 0
+                    except Exception as e:
+                        logging.error(e)
+                        return 2
+    return 0
 
 
 if __name__ == "__main__":

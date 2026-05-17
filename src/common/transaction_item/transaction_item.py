@@ -32,6 +32,18 @@ class TransactionItem:
     def __lt__(self, other):
         return self.amount < other.amount
 
+    def __str__(self):
+        return (
+            f"timestamp: {self.timestamp}, "
+            f"from_bank: {self.from_bank}, "
+            f"from_account: {self.from_account}, "
+            f"to_bank: {self.to_bank}, "
+            f"to_account: {self.to_account}, "
+            f"amount: {self.amount}, "
+            f"currency: {self.currency}, "
+            f"payment_format: {self.payment_format}"
+        )
+
     def is_between(self, date_from: datetime, date_to: datetime) -> bool:
         return date_from <= self.timestamp <= date_to
 
