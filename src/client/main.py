@@ -44,7 +44,7 @@ class Client:
                 logging.info(f"Received message of type {msg_type}")
                 if msg_type == external.MsgType.EOF:
                     break
-                if msg_type == external.MsgType.RESULT:
+                if msg_type in external.RESULT_MSG_TYPES:
                     out.write(payload.decode("utf-8") + "\n")
 
     def disconnect(self):
