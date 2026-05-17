@@ -1,3 +1,5 @@
+import csv
+import io
 import logging
 import socket
 import os
@@ -28,7 +30,7 @@ def handle_client_request(client_socket, msg_handler):
             message = external.recv_msg(client_socket)
 
             if message[0] == external.MsgType.DATA:
-                csv_fields = message[1].decode("utf-8").split(",")
+                csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
                 input_queue.send(msg_handler.serialize_tx([csv_fields]))
                 external.send_msg(client_socket, external.MsgType.ACK)
 
