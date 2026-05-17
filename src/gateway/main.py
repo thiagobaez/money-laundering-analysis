@@ -28,8 +28,8 @@ def handle_client_request(client_socket, msg_handler):
             message = external.recv_msg(client_socket)
 
             if message[0] == external.MsgType.DATA:
-                fields = internal.deserialize(message[1])
-                input_queue.send(msg_handler.serialize_tx(fields))
+                csv_fields = message[1].decode("utf-8").split(",")
+                input_queue.send(msg_handler.serialize_tx([csv_fields]))
                 external.send_msg(client_socket, external.MsgType.ACK)
 
             if message[0] == external.MsgType.EOF:
@@ -70,7 +70,9 @@ def handle_client_response(client_map):
             else:
                 query_id, *data = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
-                external.send_data(client_socket, internal.serialize(data), msg_type)
+                external.send_data(
+                    client_socket, ",".join(data).encode("utf-8"), msg_type
+                )
             ack()
         except socket.error:
             logging.error("The connection with the client was lost")

@@ -1,5 +1,3 @@
-import csv
-import io
 import os
 import logging
 import signal
@@ -30,9 +28,8 @@ class Filter:
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
 
-    def _parse_transaction(self, csv_line):
-        row = next(csv.reader(io.StringIO(csv_line)))
-        return transaction_item.TransactionItem(*row)
+    def _parse_transaction(self, fields):
+        return transaction_item.TransactionItem(*fields)
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -50,7 +47,9 @@ class Filter:
 
             tx = self._parse_transaction(fields[1])
             if tx.amount < MAX_AMOUNT:
-                self.output_queue.send(message)
+                self.output_queue.send(
+                    message_protocol.internal.serialize([client_id, ID] + fields[1])
+                )
 
             ack()
         except Exception as e:
