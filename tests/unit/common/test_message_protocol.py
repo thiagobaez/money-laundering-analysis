@@ -161,7 +161,7 @@ class TestRecvMsg:
         )
 
     def test_unknown_type_raises(self):
-        with pytest.raises(ValueError, match="Unknown message type"):
+        with pytest.raises(ValueError):
             recv_msg(_make_socket(external_serializer.serialize_uint32(99)))
 
 

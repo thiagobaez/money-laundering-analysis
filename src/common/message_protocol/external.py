@@ -1,9 +1,10 @@
 from asyncio import IncompleteReadError
+from enum import IntEnum
 
 from . import external_serializer
 
 
-class MsgType:
+class MsgType(IntEnum):
     DATA = 1
     ACK = 2
     EOF = 3
@@ -65,8 +66,10 @@ def send_eof(socket):
 
 
 def recv_msg(socket) -> tuple:
-    msg_type = external_serializer.deserialize_uint32(
-        _recv_sized(socket, external_serializer.UINT32_SIZE)
+    msg_type = MsgType(
+        external_serializer.deserialize_uint32(
+            _recv_sized(socket, external_serializer.UINT32_SIZE)
+        )
     )
     if msg_type in _PAYLOAD_MSG_TYPES:
         size = external_serializer.deserialize_uint32(
