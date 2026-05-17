@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 
 os.environ.setdefault("ID", "1")
+os.environ.setdefault("QUERY_NUMBER", "1")
 os.environ.setdefault("MOM_HOST", "rabbitmq")
 os.environ.setdefault("INPUT_QUEUE", "filter_input")
 os.environ.setdefault("OUTPUT_QUEUE", "filter_output")
@@ -18,9 +19,12 @@ def _make_tx_fields(amount):
         "Acc1",
         "BankB",
         "Acc2",
-        str(amount),
-        "USD",
-        "Wire",
+        str(amount),   # amount_received
+        "US Dollar",   # receiving_currency
+        str(amount),   # amount_paid
+        "US Dollar",   # payment_currency
+        "Wire",        # payment_format
+        "0",           # is_laundering
     ]
 
 

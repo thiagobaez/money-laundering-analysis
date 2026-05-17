@@ -5,10 +5,17 @@ import signal
 from common import middleware, message_protocol, transaction_item
 
 ID = int(os.environ["ID"])
+QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
-MAX_AMOUNT = float(os.environ["MAX_AMOUNT"])
+
+_max_amount_env = os.environ.get("MAX_AMOUNT")
+MAX_AMOUNT = float(_max_amount_env) if _max_amount_env is not None else None
+GE_DATE = os.environ.get("GE_DATE")
+LE_DATE = os.environ.get("LE_DATE")
+_pay_fmts_env = os.environ.get("PAY_FMTS")
+PAY_FMTS = set(_pay_fmts_env.split(",")) if _pay_fmts_env is not None else None
 
 
 class Filter:
@@ -40,24 +47,35 @@ class Filter:
             client_id = fields[0]
 
             if len(fields) == 1:
-                logging.info(f"[worker {ID}] EOF received for client {client_id}")
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
+                )
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
                 ack()
                 return
 
             tx = self._parse_transaction(fields[1])
-            if tx.amount < MAX_AMOUNT:
+
+            passes = (
+                (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
+                and ((GE_DATE is None and LE_DATE is None) or tx.is_in_date_range(GE_DATE, LE_DATE))
+                and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
+            )
+
+            if passes:
                 self.output_queue.send(
-                    message_protocol.internal.serialize([client_id, ID] + fields[1])
+                    message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER] + fields[1]
+                    )
                 )
 
             ack()
         except Exception as e:
-            logging.error(f"[worker {ID}] Error processing message: {e}")
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
             nack()
 
     def run(self):
-        logging.info(f"[worker {ID}] Starting filter worker (max_amount={MAX_AMOUNT})")
+        logging.info(f"[QUERY {QUERY_NUMBER}] Starting filter worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -67,7 +85,7 @@ class Filter:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[worker {ID}] Error closing resources: {e}")
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 
 
 def main():

@@ -1,5 +1,5 @@
 services:
-  client:
+  client0:
     container_name: client
     build:
       context: ./src
@@ -10,7 +10,7 @@ services:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
     - INPUT_FILE=/datasets/Hipersmall_Trans.csv
-    - OUTPUT_FILE=/output/output.csv
+    - OUTPUT_FILE=/output/client0/output.csv
     volumes:
     - ./datasets:/datasets
     - ./output:/output
@@ -39,10 +39,28 @@ services:
         condition: service_healthy
     environment:
     - ID=1
+    - QUERY_NUMBER=1
     - INPUT_QUEUE=input_queue
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
     - MAX_AMOUNT=50
+  q5_filter:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q5_filter
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - ID=1
+    - QUERY_NUMBER=5
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - PAY_FMTS=Wire,ACH
+    - INPUT_QUEUE=input_queue
+    - OUTPUT_QUEUE=results_queue
+    - MOM_HOST=rabbitmq
   rabbitmq:
     build:
       context: ./src/rabbitmq
