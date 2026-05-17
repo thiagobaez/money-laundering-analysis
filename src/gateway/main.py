@@ -22,7 +22,9 @@ def handle_client_request(client_socket, msg_handler):
             if message[0] == message_protocol.external.MsgType.DATA:
                 serialized_message = msg_handler.serialize_data_message(message[1])
                 input_queue.send(serialized_message)
-                print(f"[DATA] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}")
+                print(
+                    f"[DATA] client_id={msg_handler.client_id} | {message[1].decode('utf-8')}"
+                )
                 message_protocol.external.send_msg(
                     client_socket, message_protocol.external.MsgType.ACK
                 )
@@ -33,7 +35,9 @@ def handle_client_request(client_socket, msg_handler):
                 message_protocol.external.send_msg(
                     client_socket, message_protocol.external.MsgType.ACK
                 )
-                logging.info("All data received for client_id=%s", msg_handler.client_id)
+                logging.info(
+                    "All data received for client_id=%s", msg_handler.client_id
+                )
                 return
 
     except socket.error:
@@ -51,7 +55,9 @@ def handle_client_response(client_list):
         client_index = 0
         try:
             for [message_handler_instance, client_socket] in client_list:
-                payload, is_eof = message_handler_instance.deserialize_result_message(message)
+                payload, is_eof = message_handler_instance.deserialize_result_message(
+                    message
+                )
 
                 if payload is None and not is_eof:
                     client_index += 1

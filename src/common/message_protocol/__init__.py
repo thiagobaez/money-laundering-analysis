@@ -1,2 +1,2 @@
-from . import external
-from . import internal
+from . import external as external
+from . import internal as internal

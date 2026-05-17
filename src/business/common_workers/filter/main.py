@@ -17,8 +17,12 @@ class Filter:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, INPUT_QUEUE
+        )
+        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, OUTPUT_QUEUE
+        )
 
     def _handle_sigterm(self, signum, frame):
         logging.info("Received SIGTERM signal")

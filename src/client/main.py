@@ -32,7 +32,9 @@ class Client:
                 csv.writer(buf).writerow(selected_row)
                 line = buf.getvalue().strip()
                 if line:
-                    external.send_data(self._socket, line.encode("utf-8"), external.MsgType.DATA)
+                    external.send_data(
+                        self._socket, line.encode("utf-8"), external.MsgType.DATA
+                    )
         external.send_eof(self._socket)
 
     def _receive_results(self, output_path: str):
@@ -44,7 +46,6 @@ class Client:
                     break
                 if msg_type == external.MsgType.RESULT:
                     out.write(payload.decode("utf-8") + "\n")
-
 
     def disconnect(self):
         if self._socket and not self._closed:
