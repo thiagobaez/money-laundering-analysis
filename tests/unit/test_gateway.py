@@ -56,22 +56,21 @@ class TestMessageHandler:
 
     def test_serialize_eof_is_eof_message(self):
         handler = MessageHandler()
-        result = internal.deserialize(handler.serialize_eof())
-        assert result == internal.EOF_MESSAGE
+        assert handler.deserialize_result(handler.serialize_eof()) is None
 
     def test_deserialize_result_returns_tuple_for_matching_client(self):
         handler = MessageHandler()
-        message = internal.serialize([handler.client_id, 2, "some_data"])
-        assert handler.deserialize_result(message) == (2, "some_data")
+        message = internal.serialize([handler.client_id, 1, "some_data"])
+        assert handler.deserialize_result(message) == (1, "some_data")
 
     def test_deserialize_result_returns_none_for_different_client(self):
         handler = MessageHandler()
-        message = internal.serialize(["other-client-id", 2, "some_data"])
+        message = internal.serialize(["other-client-id", 1, "some_data"])
         assert handler.deserialize_result(message) is None
 
     def test_deserialize_result_returns_none_for_eof_message(self):
         handler = MessageHandler()
-        message = internal.serialize(internal.EOF_MESSAGE)
+        message = internal.serialize([handler.client_id])
         assert handler.deserialize_result(message) is None
 
     def test_deserialize_result_returns_none_for_short_list(self):
@@ -127,7 +126,7 @@ class TestHandleClientResponse:
         sock = MagicMock()
         client_map = {handler.client_id: [handler, sock]}
 
-        message = internal.serialize([handler.client_id, 2, "some_data"])
+        message = internal.serialize([handler.client_id, 1, "some_data"])
         ack = MagicMock()
         nack = MagicMock()
 
@@ -143,7 +142,7 @@ class TestHandleClientResponse:
         captured["cb"](message, ack, nack)
 
         mock_send_data.assert_called_once_with(
-            sock, internal.serialize([2, "some_data"])
+            sock, internal.serialize(["some_data"]), external.MsgType.RESULT_QUERY1
         )
         ack.assert_called_once()
         nack.assert_not_called()
@@ -156,7 +155,7 @@ class TestHandleClientResponse:
         sock = MagicMock()
         client_map = {"other-client-id": [handler, sock]}
 
-        message = internal.serialize(["unrelated-id", 2, "some_data"])
+        message = internal.serialize(["unrelated-id", 1, "some_data"])
         ack = MagicMock()
         nack = MagicMock()
 
@@ -185,7 +184,7 @@ class TestHandleClientResponse:
         sock = MagicMock()
         client_map = {handler.client_id: [handler, sock]}
 
-        message = internal.serialize([handler.client_id, 2, "some_data"])
+        message = internal.serialize([handler.client_id, 1, "some_data"])
         ack = MagicMock()
         nack = MagicMock()
 
