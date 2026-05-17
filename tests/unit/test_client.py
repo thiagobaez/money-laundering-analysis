@@ -21,9 +21,7 @@ class TestSendFile:
 
         csv_file = tmp_path / "input.csv"
         csv_file.write_text(
-            "h0,h1,h2,h3,h4,h5,h6,h7,h8,h9\n"
-            "a,b,c,d,e,f,g,h,i,j\n"
-            "1,2,3,4,5,6,7,8,9,0\n"
+            "h0,h1,h2,h3,h4,h5,h6,h7,h8,h9\na,b,c,d,e,f,g,h,i,j\n1,2,3,4,5,6,7,8,9,0\n"
         )
 
         client._send_file(str(csv_file))
@@ -54,7 +52,9 @@ class TestSendFile:
 
         # SELECTED_TX_ROWS = [0,1,2,3,4,5,6,9] — indices 7 and 8 should be dropped
         csv_file = tmp_path / "input.csv"
-        csv_file.write_text("h0,h1,h2,h3,h4,h5,h6,h7,h8,h9\na,b,c,d,e,f,g,DROP,DROP,keep\n")
+        csv_file.write_text(
+            "h0,h1,h2,h3,h4,h5,h6,h7,h8,h9\na,b,c,d,e,f,g,DROP,DROP,keep\n"
+        )
 
         client._send_file(str(csv_file))
 

@@ -90,7 +90,7 @@ class TestHandleClientRequest:
         mock_queue = mock_queue_cls.return_value
 
         handler = MessageHandler()
-        payload = internal.serialize(["field1", "field2"])
+        payload = b"2023/01/01,BankA,Acc1,BankB,Acc2,30.0,USD,Wire"
         client_socket = _make_fake_socket(
             (MsgType.DATA, payload),
             (MsgType.EOF, None),
@@ -98,7 +98,7 @@ class TestHandleClientRequest:
 
         handle_client_request(client_socket, handler)
 
-        expected_tx = handler.serialize_tx(internal.deserialize(payload))
+        expected_tx = handler.serialize_tx([payload.decode("utf-8").split(",")])
         expected_eof = handler.serialize_eof()
 
         assert mock_queue.send.call_count == 2
@@ -159,7 +159,7 @@ class TestHandleClientResponse:
         captured["cb"](message, ack, nack)
 
         mock_send_data.assert_called_once_with(
-            sock, internal.serialize(["some_data"]), external.MsgType.RESULT_QUERY1
+            sock, b"some_data", external.MsgType.RESULT_QUERY1
         )
         ack.assert_called_once()
         nack.assert_not_called()

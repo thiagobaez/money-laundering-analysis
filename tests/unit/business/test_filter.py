@@ -11,8 +11,17 @@ os.environ.setdefault("MAX_AMOUNT", "50")
 from common.message_protocol import internal
 
 
-def _make_tx_csv(amount):
-    return f"2023/01/01 12:00,BankA,Acc1,BankB,Acc2,{amount},USD,Wire"
+def _make_tx_fields(amount):
+    return [
+        "2023/01/01 12:00",
+        "BankA",
+        "Acc1",
+        "BankB",
+        "Acc2",
+        str(amount),
+        "USD",
+        "Wire",
+    ]
 
 
 class TestFilterOnMessage:
@@ -28,17 +37,19 @@ class TestFilterOnMessage:
         return Filter()
 
     def test_transaction_below_max_is_forwarded(self, filter_worker):
-        message = internal.serialize(["client-1", _make_tx_csv(30.0)])
+        fields = _make_tx_fields(30.0)
+        message = internal.serialize(["client-1", fields])
         ack, nack = MagicMock(), MagicMock()
 
         filter_worker._on_message(message, ack, nack)
 
-        filter_worker.output_queue.send.assert_called_once_with(message)
+        expected = internal.serialize(["client-1", 1] + fields)
+        filter_worker.output_queue.send.assert_called_once_with(expected)
         ack.assert_called_once()
         nack.assert_not_called()
 
     def test_transaction_above_max_is_discarded(self, filter_worker):
-        message = internal.serialize(["client-1", _make_tx_csv(100.0)])
+        message = internal.serialize(["client-1", _make_tx_fields(100.0)])
         ack, nack = MagicMock(), MagicMock()
 
         filter_worker._on_message(message, ack, nack)
@@ -58,8 +69,8 @@ class TestFilterOnMessage:
         nack.assert_not_called()
 
     def test_malformed_transaction_nacks(self, filter_worker):
-        # Too few CSV fields → TypeError in TransactionItem constructor
-        message = internal.serialize(["client-1", "bad,csv"])
+        # Too few fields → TypeError in TransactionItem constructor
+        message = internal.serialize(["client-1", ["only-one-field"]])
         ack, nack = MagicMock(), MagicMock()
 
         filter_worker._on_message(message, ack, nack)
