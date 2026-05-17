@@ -19,12 +19,12 @@ def _make_tx_fields(amount):
         "Acc1",
         "BankB",
         "Acc2",
-        str(amount),   # amount_received
-        "US Dollar",   # receiving_currency
-        str(amount),   # amount_paid
-        "US Dollar",   # payment_currency
-        "Wire",        # payment_format
-        "0",           # is_laundering
+        str(amount),  # amount_received
+        "US Dollar",  # receiving_currency
+        str(amount),  # amount_paid
+        "US Dollar",  # payment_currency
+        "Wire",  # payment_format
+        "0",  # is_laundering
     ]
 
 

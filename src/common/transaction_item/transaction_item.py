@@ -58,7 +58,9 @@ class TransactionItem:
 
     def is_in_date_range(self, ge_date: str | None, le_date: str | None) -> bool:
         date_str = self._timestamp.date().isoformat()
-        return (ge_date is None or date_str >= ge_date) and (le_date is None or date_str <= le_date)
+        return (ge_date is None or date_str >= ge_date) and (
+            le_date is None or date_str <= le_date
+        )
 
     def has_payment_format(self, fmt: str) -> bool:
         return self._payment_format == fmt
@@ -71,4 +73,3 @@ class TransactionItem:
 
     def is_between(self, date_from: datetime, date_to: datetime) -> bool:
         return date_from <= self._timestamp <= date_to
-

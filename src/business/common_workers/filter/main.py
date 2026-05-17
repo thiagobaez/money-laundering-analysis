@@ -58,7 +58,10 @@ class Filter:
 
             passes = (
                 (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
-                and ((GE_DATE is None and LE_DATE is None) or tx.is_in_date_range(GE_DATE, LE_DATE))
+                and (
+                    (GE_DATE is None and LE_DATE is None)
+                    or tx.is_in_date_range(GE_DATE, LE_DATE)
+                )
                 and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
             )
 
