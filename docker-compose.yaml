@@ -42,7 +42,7 @@ services:
     - INPUT_QUEUE=input_queue
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - MIN_AMOUNT=50
+    - MAX_AMOUNT=50
   rabbitmq:
     build:
       context: ./src/rabbitmq

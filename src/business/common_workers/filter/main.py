@@ -10,7 +10,7 @@ ID = int(os.environ["ID"])
 MOM_HOST = os.environ["MOM_HOST"]
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
-MIN_AMOUNT = float(os.environ["MIN_AMOUNT"])
+MAX_AMOUNT = float(os.environ["MAX_AMOUNT"])
 
 
 class Filter:
@@ -49,7 +49,7 @@ class Filter:
                 return
 
             tx = self._parse_transaction(fields[1])
-            if tx.amount < MIN_AMOUNT:
+            if tx.amount < MAX_AMOUNT:
                 self.output_queue.send(message)
 
             ack()
@@ -58,7 +58,7 @@ class Filter:
             nack()
 
     def run(self):
-        logging.info(f"[worker {ID}] Starting filter worker (min_amount={MIN_AMOUNT})")
+        logging.info(f"[worker {ID}] Starting filter worker (max_amount={MAX_AMOUNT})")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
