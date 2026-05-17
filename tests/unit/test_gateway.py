@@ -78,6 +78,11 @@ class TestMessageHandler:
         message = internal.serialize([handler.client_id])
         assert handler.deserialize_result(message) is None
 
+    def test_deserialize_result_returns_none_for_non_list_message(self):
+        handler = MessageHandler()
+        message = internal.serialize("not a list")
+        assert handler.deserialize_result(message) is None
+
 
 class TestHandleClientRequest:
     def test_data_message_is_published_and_ack_sent(self, mocker):
@@ -110,6 +115,18 @@ class TestHandleClientRequest:
         handler = MessageHandler()
         client_socket = MagicMock()
         client_socket.recv_into.side_effect = socket.error("connection reset")
+
+        handle_client_request(client_socket, handler)
+
+        mock_queue.close.assert_called_once()
+
+    def test_generic_exception_closes_queue(self, mocker):
+        mock_queue_cls = mocker.patch("gateway.main.MessageMiddlewareQueueRabbitMQ")
+        mock_queue = mock_queue_cls.return_value
+
+        handler = MessageHandler()
+        client_socket = MagicMock()
+        client_socket.recv_into.side_effect = ValueError("unexpected")
 
         handle_client_request(client_socket, handler)
 
@@ -202,6 +219,78 @@ class TestHandleClientResponse:
         assert handler.client_id not in client_map
         ack.assert_called_once()
         nack.assert_not_called()
+
+    def test_eof_message_sends_eof_to_client(self, mocker):
+        mock_queue_cls = mocker.patch("gateway.main.MessageMiddlewareQueueRabbitMQ")
+        mock_queue = mock_queue_cls.return_value
+        mock_send_msg = mocker.patch("gateway.main.external.send_msg")
+
+        handler = MessageHandler()
+        sock = MagicMock()
+        client_map = {handler.client_id: [handler, sock]}
+
+        message = handler.serialize_eof()
+        ack, nack = MagicMock(), MagicMock()
+
+        captured = {}
+
+        def fake_start_consuming(cb):
+            captured["cb"] = cb
+
+        mock_queue.start_consuming.side_effect = fake_start_consuming
+
+        handle_client_response(client_map)
+        captured["cb"](message, ack, nack)
+
+        mock_send_msg.assert_called_once_with(sock, external.MsgType.EOF)
+        assert handler.client_id not in client_map
+        ack.assert_called_once()
+        nack.assert_not_called()
+
+    def test_malformed_message_is_acked(self, mocker):
+        mock_queue_cls = mocker.patch("gateway.main.MessageMiddlewareQueueRabbitMQ")
+        mock_queue = mock_queue_cls.return_value
+
+        client_map = {}
+        message = internal.serialize("not a list")
+        ack, nack = MagicMock(), MagicMock()
+
+        captured = {}
+
+        def fake_start_consuming(cb):
+            captured["cb"] = cb
+
+        mock_queue.start_consuming.side_effect = fake_start_consuming
+
+        handle_client_response(client_map)
+        captured["cb"](message, ack, nack)
+
+        ack.assert_called_once()
+        nack.assert_not_called()
+
+    def test_generic_exception_nacks_and_stops(self, mocker):
+        mock_queue_cls = mocker.patch("gateway.main.MessageMiddlewareQueueRabbitMQ")
+        mock_queue = mock_queue_cls.return_value
+        mocker.patch(
+            "gateway.main.internal.deserialize", side_effect=RuntimeError("oops")
+        )
+
+        client_map = {}
+        ack, nack = MagicMock(), MagicMock()
+
+        captured = {}
+
+        def fake_start_consuming(cb):
+            captured["cb"] = cb
+
+        mock_queue.start_consuming.side_effect = fake_start_consuming
+
+        handle_client_response(client_map)
+        captured["cb"](b"raw bytes", ack, nack)
+
+        nack.assert_called_once()
+        mock_queue.stop_consuming.assert_called_once()
+        ack.assert_not_called()
 
 
 class TestHandleSigterm:
