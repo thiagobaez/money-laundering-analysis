@@ -43,24 +43,23 @@ class TestSendFile:
 
         mock_send_data.assert_not_called()
 
-    def test_column_selection_drops_unselected_fields(self, mocker, tmp_path):
+    def test_all_columns_are_forwarded(self, mocker, tmp_path):
         mock_send_data = mocker.patch("client.main.external.send_data")
         mocker.patch("client.main.external.send_eof")
 
         client = Client()
         client._socket = MagicMock()
 
-        # SELECTED_TX_ROWS = [0,1,2,3,4,5,6,9] — indices 7 and 8 should be dropped
         csv_file = tmp_path / "input.csv"
         csv_file.write_text(
-            "h0,h1,h2,h3,h4,h5,h6,h7,h8,h9\na,b,c,d,e,f,g,DROP,DROP,keep\n"
+            "h0,h1,h2,h3,h4,h5,h6,h7,h8,h9,h10\na,b,c,d,e,f,g,h,i,j,k\n"
         )
 
         client._send_file(str(csv_file))
 
         sent_payload = mock_send_data.call_args[0][1]
-        assert b"DROP" not in sent_payload
-        assert b"keep" in sent_payload
+        for col in [b"a", b"b", b"h", b"i", b"j", b"k"]:
+            assert col in sent_payload
 
     def test_sends_with_data_msg_type(self, mocker, tmp_path):
         mock_send_data = mocker.patch("client.main.external.send_data")
@@ -81,18 +80,17 @@ class TestSendFile:
 class TestReceiveResults:
     def test_writes_result_messages_to_file(self, mocker, tmp_path):
         mocker.patch("client.main.external.recv_msg").side_effect = [
-            (MsgType.RESULT_QUERY1, b"line1"),
-            (MsgType.RESULT_QUERY3, b"line2"),
+            (MsgType.RESULT_QUERY5, b"line1"),
+            (MsgType.RESULT_QUERY5, b"line2"),
             (MsgType.EOF, None),
         ]
 
         client = Client()
         client._socket = MagicMock()
 
-        out = tmp_path / "output.txt"
-        client._receive_results(str(out))
+        client._receive_results(str(tmp_path / "output.csv"))
 
-        content = out.read_text()
+        content = (tmp_path / "query5.csv").read_text()
         assert "line1\n" in content
         assert "line2\n" in content
 
@@ -103,11 +101,10 @@ class TestReceiveResults:
         client = Client()
         client._socket = MagicMock()
 
-        out = tmp_path / "output.txt"
-        client._receive_results(str(out))
+        client._receive_results(str(tmp_path / "output.csv"))
 
         assert recv_mock.call_count == 1
-        assert out.read_text() == ""
+        assert not (tmp_path / "query5.csv").exists()
 
     def test_ignores_non_result_messages(self, mocker, tmp_path):
         mocker.patch("client.main.external.recv_msg").side_effect = [
@@ -119,10 +116,9 @@ class TestReceiveResults:
         client = Client()
         client._socket = MagicMock()
 
-        out = tmp_path / "output.txt"
-        client._receive_results(str(out))
+        client._receive_results(str(tmp_path / "output.csv"))
 
-        assert out.read_text() == "real\n"
+        assert (tmp_path / "query5.csv").read_text() == "real\n"
 
 
 class TestDisconnect:

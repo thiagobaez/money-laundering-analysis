@@ -8,9 +8,12 @@ BASE = {
     "from_account": "123",
     "to_bank": "Santander",
     "to_account": "456",
+    "amount_received": "100.0",
+    "receiving_currency": "US Dollar",
     "amount_paid": "100.0",
-    "payment_currency": "USD",
+    "payment_currency": "US Dollar",
     "payment_format": "Reinvestment",
+    "is_laundering": "0",
 }
 
 
@@ -21,12 +24,12 @@ def make(**overrides):
 class TestInit:
     def test_timestamp_parsed(self):
         item = make()
-        assert item.timestamp == datetime(2022, 9, 1, 0, 16)
+        assert item.is_between(datetime(2022, 9, 1, 0, 16), datetime(2022, 9, 1, 0, 16))
 
     def test_amount_is_float(self):
         item = make()
-        assert item.amount == float(100.0)
-        assert isinstance(item.amount, float)
+        assert item.is_sent_amount_below(100.01)
+        assert not item.is_sent_amount_below(99.99)
 
     def test_invalid_timestamp_raises(self):
         with pytest.raises(ValueError):

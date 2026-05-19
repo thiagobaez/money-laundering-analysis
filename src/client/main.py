@@ -10,7 +10,7 @@ SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
 INPUT_FILE = os.environ["INPUT_FILE"]
 OUTPUT_FILE = os.environ["OUTPUT_FILE"]
-SELECTED_TX_ROWS = [0, 1, 2, 3, 4, 5, 6, 9]
+SELECTED_TX_ROWS = list(range(11))
 
 
 class Client:
@@ -38,14 +38,29 @@ class Client:
         external.send_eof(self._socket)
 
     def _receive_results(self, output_path: str):
-        with open(output_path, "w", encoding="utf-8") as out:
+        output_dir = os.path.dirname(output_path)
+        MSG_TYPE_TO_FILE = {
+            external.MsgType.RESULT_QUERY1: "query1.csv",
+            external.MsgType.RESULT_QUERY3: "query3.csv",
+            external.MsgType.RESULT_QUERY4: "query4.csv",
+            external.MsgType.RESULT_QUERY5: "query5.csv",
+        }
+        file_handles = {}
+        try:
             while True:
                 msg_type, payload = external.recv_msg(self._socket)
-                logging.info(f"Received message of type {msg_type}")
+                logging.info(f"Received message of type {msg_type.name}")
                 if msg_type == external.MsgType.EOF:
                     break
-                if msg_type in external.RESULT_MSG_TYPES:
-                    out.write(payload.decode("utf-8") + "\n")
+                if msg_type in MSG_TYPE_TO_FILE:
+                    if msg_type not in file_handles:
+                        os.makedirs(output_dir, exist_ok=True)
+                        path = os.path.join(output_dir, MSG_TYPE_TO_FILE[msg_type])
+                        file_handles[msg_type] = open(path, "w", encoding="utf-8")
+                    file_handles[msg_type].write(payload.decode("utf-8") + "\n")
+        finally:
+            for fh in file_handles.values():
+                fh.close()
 
     def disconnect(self):
         if self._socket and not self._closed:
