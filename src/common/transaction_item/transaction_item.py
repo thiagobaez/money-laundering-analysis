@@ -33,10 +33,10 @@ class TransactionItem:
         self._is_laundering = int(is_laundering)
 
     def __eq__(self, other):
-        return self._amount_paid == other._amount_paid
+        return self._amount_received == other._amount_received
 
     def __lt__(self, other):
-        return self._amount_paid < other._amount_paid
+        return self._amount_received < other._amount_received
 
     def __str__(self):
         return (
@@ -54,7 +54,7 @@ class TransactionItem:
         )
 
     def is_sent_amount_below(self, max_amount: float) -> bool:
-        return self._amount_paid < max_amount
+        return self._amount_received < max_amount
 
     def is_in_date_range(self, ge_date: str | None, le_date: str | None) -> bool:
         date_str = self._timestamp.date().isoformat()

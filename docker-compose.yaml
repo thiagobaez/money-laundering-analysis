@@ -9,7 +9,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/Hipersmall_Trans.csv
+    - INPUT_FILE=/datasets/cortito.csv
     - OUTPUT_FILE=/output/client0/output.csv
     volumes:
     - ./datasets:/datasets
@@ -23,27 +23,87 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-    - INPUT_QUEUE=input_queue
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd,q5_filter
     - MOM_HOST=rabbitmq
-    - OUTPUT_QUEUE=results_queue
+    - OUTPUT_EXCHANGE_NAME=output_gateway_exchange
+    - OUTPUT_ROUTING_KEYS=filter_amount_q1,q5_filter
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-  filter:
+
+  filter_usd:
     build:
       context: ./src/
       dockerfile: business/common_workers/filter/Dockerfile
-    container_name: filter
+    container_name: filter_usd
     depends_on:
       rabbitmq:
         condition: service_healthy
     environment:
     - ID=1
     - QUERY_NUMBER=1
-    - INPUT_QUEUE=input_queue
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
     - MOM_HOST=rabbitmq
-    - OUTPUT_QUEUE=results_queue
+    - OUTPUT_EXCHANGE_NAME=filter_usd_exchange
+    - OUTPUT_ROUTING_KEYS=filter_amount_q1,filter_per_date_q4
+    - USD_ONLY=True
+
+  filter_amount_q1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_amount_q1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - ID=1
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=filter_usd_exchange
+    - INPUT_ROUTING_KEYS=filter_amount_q1
+    - MOM_HOST=rabbitmq
+    - OUTPUT_EXCHANGE_NAME=output_gateway_exchange
+    - OUTPUT_ROUTING_KEYS=filter_amount_q1,filter_per_date_q4
     - MAX_AMOUNT=50
+    - ADD_QUERY_ID=True
+
+  filter_date_q4:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_date_q4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - ID=1
+    - QUERY_NUMBER=4
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - INPUT_EXCHANGE_NAME=filter_usd_exchange
+    - INPUT_ROUTING_KEYS=filter_per_date_q4
+    - OUTPUT_QUEUE=tx_usd_date
+    - MOM_HOST=rabbitmq
+  
+  split_q4:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: split_q4
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - ID=1
+    - QUERY_NUMBER=4
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=split_q4_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1
+    - DESTINATION_ROUTING_KEYS=tx_destination_1
+    - MOM_HOST=rabbitmq
+
   q5_filter:
     build:
       context: ./src/
@@ -58,9 +118,12 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - INPUT_QUEUE=input_queue
-    - OUTPUT_QUEUE=results_queue
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=q5_filter
+    - OUTPUT_EXCHANGE_NAME=output_gateway_exchange
+    - OUTPUT_ROUTING_KEYS=q5_filter
     - MOM_HOST=rabbitmq
+    - ADD_QUERY_ID=True
   rabbitmq:
     build:
       context: ./src/rabbitmq

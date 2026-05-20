@@ -9,6 +9,7 @@ up:
 .PHONY: up
 
 down:
+	rm -rf output
 	docker compose -f docker-compose.yaml stop -t 5
 	docker compose -f docker-compose.yaml down
 .PHONY: down

@@ -7,6 +7,7 @@ import signal
 import multiprocessing
 from gateway.message_handler import MessageHandler
 from common.middleware import MessageMiddlewareQueueRabbitMQ
+from common.middleware import MessageMiddlewareExchangeRabbitMQ
 from common.message_protocol import internal, external
 
 _QUERY_RESULT_TYPES = {
@@ -19,12 +20,14 @@ _QUERY_RESULT_TYPES = {
 SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
 MOM_HOST = os.environ["MOM_HOST"]
-INPUT_QUEUE = os.environ["INPUT_QUEUE"]
-OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
+INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
+INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
 
+OUTPUT_EXCHANGE_NAME = os.environ["OUTPUT_EXCHANGE_NAME"]
+OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
 
 def handle_client_request(client_socket, msg_handler):
-    input_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
+    input_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
     try:
         while True:
             message = external.recv_msg(client_socket)
@@ -50,8 +53,9 @@ def handle_client_request(client_socket, msg_handler):
         input_queue.close()
 
 
-def handle_client_response(client_map):
-    output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+def handle_client_response(client_map, num_expected_eofs):
+    output_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
+    eof_counts = {}
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -67,8 +71,15 @@ def handle_client_response(client_map):
             handler, client_socket = client_map[client_id]
             result = handler.deserialize_result(message)
             if result is None:
-                external.send_msg(client_socket, external.MsgType.EOF)
-                del client_map[client_id]
+                eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+                logging.info(
+                    "EOF %d/%d received for client_id=%s",
+                    eof_counts[client_id], num_expected_eofs, client_id,
+                )
+                if eof_counts[client_id] >= num_expected_eofs:
+                    external.send_msg(client_socket, external.MsgType.EOF)
+                    del client_map[client_id]
+                    del eof_counts[client_id]
             else:
                 query_id, *data = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
@@ -104,7 +115,7 @@ def main():
         client_map = manager.dict()
         sigterm_received = manager.Value("c_short", 0)
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            processes_pool.apply_async(handle_client_response, (client_map,))
+            processes_pool.apply_async(handle_client_response, (client_map, len(OUTPUT_ROUTING_KEYS)))
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 logging.info("Listening to connections")

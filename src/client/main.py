@@ -10,8 +10,6 @@ SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
 INPUT_FILE = os.environ["INPUT_FILE"]
 OUTPUT_FILE = os.environ["OUTPUT_FILE"]
-SELECTED_TX_ROWS = list(range(11))
-
 
 class Client:
     def __init__(self):
@@ -27,14 +25,10 @@ class Client:
             csv_reader = csv.reader(csvfile, delimiter=",", quotechar='"')
             next(csv_reader)
             for row in csv_reader:
-                selected_row = [row[i] for i in SELECTED_TX_ROWS if i < len(row)]
-                buf = io.StringIO()
-                csv.writer(buf).writerow(selected_row)
-                line = buf.getvalue().strip()
-                if line:
-                    external.send_data(
-                        self._socket, line.encode("utf-8"), external.MsgType.DATA
-                    )
+                line = ",".join(row)
+                logging.info(f"Sending line: {line}")
+                external.send_data(self._socket, line.encode("utf-8"), external.MsgType.DATA)
+
         external.send_eof(self._socket)
 
     def _receive_results(self, output_path: str):
