@@ -17,8 +17,9 @@ class Split:
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-        self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, 
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, 
         EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS)
+
 
     def _handle_sigterm(self, signum, frame):
         logging.info("Received SIGTERM signal")
@@ -32,15 +33,16 @@ class Split:
     
     
     def _send_eof_to_all(self, client_id):
-        self.output_exchange.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
+        self.output_queue.send(message_protocol.internal.serialize([client_id]))
+
     
-    def get_hash_index_queue(account_id: str, cant_queues: int) -> int:
+    def _get_hash_index_queue(account_id: str, cant_queues: int) -> int:
         hash_value = 5381 
         for caracter in account_id:
             hash_value = ((hash_value << 5) + hash_value) + ord(caracter)
             hash_value &= 0xFFFFFFFF
-            
         return hash_value % cant_queues
+    
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -50,7 +52,7 @@ class Split:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 2:
+            if len(fields) == 1:
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
                 )
@@ -60,11 +62,14 @@ class Split:
 
             tx = self._parse_transaction(fields[2:])
 
-            i_origin = self.get_hash_index_queue(tx._from_account, len(ORIGIN_ROUTING_KEYS))
-            i_destination = self.get_hash_index_queue(tx._to_account, len(DESTINATION_ROUTING_KEYS))
+            i_origin = self._get_hash_index_queue(tx.get_from_account(), len(ORIGIN_ROUTING_KEYS))
+            i_destination = self._get_hash_index_queue(tx.get_to_account(), len(DESTINATION_ROUTING_KEYS))
 
-            self.output_exchange.send(message, ORIGIN_ROUTING_KEYS[i_origin])
-            self.output_exchange.send(message, DESTINATION_ROUTING_KEYS[i_destination])
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] Routing transaction {tx._amount_paid} to origin queue {ORIGIN_ROUTING_KEYS[i_origin]} and destination queue {DESTINATION_ROUTING_KEYS[i_destination]}"
+            )
+            self.output_queue.send(message, ORIGIN_ROUTING_KEYS[i_origin])
+            self.output_queue.send(message, DESTINATION_ROUTING_KEYS[i_destination])
 
             ack()
         except Exception as e:

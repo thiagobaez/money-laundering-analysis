@@ -22,9 +22,8 @@ SERVER_PORT = int(os.environ["SERVER_PORT"])
 MOM_HOST = os.environ["MOM_HOST"]
 INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
 INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
-
-OUTPUT_EXCHANGE_NAME = os.environ["OUTPUT_EXCHANGE_NAME"]
-OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
+OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
+NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
 
 def handle_client_request(client_socket, msg_handler):
     input_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
@@ -54,7 +53,7 @@ def handle_client_request(client_socket, msg_handler):
 
 
 def handle_client_response(client_map, num_expected_eofs):
-    output_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
+    output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
     eof_counts = {}
 
     def _consume_result(message, ack, nack):
@@ -115,7 +114,7 @@ def main():
         client_map = manager.dict()
         sigterm_received = manager.Value("c_short", 0)
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            processes_pool.apply_async(handle_client_response, (client_map, len(OUTPUT_ROUTING_KEYS)))
+            processes_pool.apply_async(handle_client_response, (client_map, NUM_EXPECTED_EOFS))
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 logging.info("Listening to connections")

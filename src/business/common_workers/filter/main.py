@@ -8,14 +8,14 @@ ID = int(os.environ["ID"])
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 
-INPUT_QUEUE = os.environ["INPUT_QUEUE"]
-OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
+INPUT_QUEUE = os.environ.get("INPUT_QUEUE")
+OUTPUT_QUEUE = os.environ.get("OUTPUT_QUEUE")
 
-INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
-INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
+INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
+INPUT_ROUTING_KEYS = os.environ.get("INPUT_ROUTING_KEYS", "").split(",") if os.environ.get("INPUT_ROUTING_KEYS") else None
 
 OUTPUT_EXCHANGE_NAME = os.environ.get("OUTPUT_EXCHANGE_NAME")
-OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
+OUTPUT_ROUTING_KEYS = os.environ.get("OUTPUT_ROUTING_KEYS", "").split(",") if os.environ.get("OUTPUT_ROUTING_KEYS") else None
 
 _max_amount_env = os.environ.get("MAX_AMOUNT")
 MAX_AMOUNT = float(_max_amount_env) if _max_amount_env is not None else None
@@ -25,7 +25,6 @@ _pay_fmts_env = os.environ.get("PAY_FMTS")
 PAY_FMTS = set(_pay_fmts_env.split(",")) if _pay_fmts_env is not None else None
 USD_ONLY = bool(os.environ.get("USD_ONLY") == "True")
 ADD_QUERY_ID = bool(os.environ.get("ADD_QUERY_ID") == "True")
-
 class Filter:
     def __init__(self):
         self.closed = False

@@ -2,7 +2,6 @@ import logging
 import os
 import socket
 import csv
-import io
 
 from common.message_protocol import external
 
