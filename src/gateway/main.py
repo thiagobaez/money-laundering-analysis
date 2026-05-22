@@ -4,6 +4,7 @@ import logging
 import socket
 import os
 import signal
+import time
 import multiprocessing
 from gateway.message_handler import MessageHandler
 from common.middleware import MessageMiddlewareQueueRabbitMQ
@@ -24,6 +25,7 @@ INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
 INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
+SEND_RATE_LIMIT = float(os.environ.get("SEND_RATE_LIMIT", "0"))
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -38,6 +40,8 @@ def handle_client_request(client_socket, msg_handler):
                 csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
                 input_queue.send(msg_handler.serialize_tx([csv_fields]))
                 external.send_msg(client_socket, external.MsgType.ACK)
+                if SEND_RATE_LIMIT > 0:
+                    time.sleep(SEND_RATE_LIMIT)
 
             if message[0] == external.MsgType.EOF:
                 input_queue.send(msg_handler.serialize_eof())

@@ -9,7 +9,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
                 pika.ConnectionParameters(host=host)
             )
             self.channel = self.connection.channel()
-            self.channel.queue_declare(queue=queue_name, durable=True)
+            self.channel.queue_declare(queue=queue_name)
             self.queue_name = queue_name
         except pika.exceptions.AMQPConnectionError as e:
             raise RuntimeError(f"No se pudo conectar: {e}")
@@ -37,7 +37,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             exchange="",
             routing_key=self.queue_name,
             body=message,
-            properties=pika.BasicProperties(delivery_mode=2),
+            properties=pika.BasicProperties(),
         )
 
     def close(self):
@@ -95,7 +95,7 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
                 exchange=self.exchange_name,
                 routing_key=key,
                 body=message,
-                properties=pika.BasicProperties(delivery_mode=2),
+                properties=pika.BasicProperties(),
             )
 
     def close(self):
