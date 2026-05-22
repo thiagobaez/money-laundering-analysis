@@ -18,7 +18,7 @@ switch:
 	@echo Escenarios de prueba:
 	@echo "1) Un cliente, una sola réplica de cada elemento"
 	@echo "2) Un cliente, tres sola réplica de cada elemento"
-	@read -p "Selecciona uno [1-5]: " option;	\
+	@read -p "Selecciona uno [1-2]: " option;	\
 	cp ./scenarios/$${option}.yaml docker-compose.yaml
 .PHONY: switch
 

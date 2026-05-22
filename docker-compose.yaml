@@ -8,6 +8,7 @@ services:
       - filter_usd_1
       - filter_usd_2
       - filter_usd_3
+      - q5_filter
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
@@ -49,6 +50,7 @@ services:
       - q4_filter_date_3
       - q5_filter
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -71,6 +73,7 @@ services:
       - q4_filter_date_3
       - q5_filter
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -93,6 +96,7 @@ services:
       - q4_filter_date_3
       - q5_filter
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -109,6 +113,7 @@ services:
     depends_on:
       - gateway
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
     - INPUT_EXCHANGE_NAME=filter_usd_exchange
@@ -125,6 +130,7 @@ services:
     depends_on:
       - gateway
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
     - INPUT_EXCHANGE_NAME=filter_usd_exchange
@@ -141,6 +147,7 @@ services:
     depends_on:
       - gateway
     environment:
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
     - INPUT_EXCHANGE_NAME=filter_usd_exchange
@@ -153,13 +160,15 @@ services:
     build:
       context: ./src/
       dockerfile: business/common_workers/filter/Dockerfile
-    container_name: q4_filter_date_1
+    container_name: q4_filter_date
     depends_on:
       - q4_split_1
       - q4_split_2
       - q4_split_3
     environment:
+    - QUERY_NUMBER=4
     - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
@@ -179,6 +188,7 @@ services:
       - q4_split_3
     environment:
     - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
@@ -198,6 +208,7 @@ services:
       - q4_split_3
     environment:
     - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05

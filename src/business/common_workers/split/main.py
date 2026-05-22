@@ -15,9 +15,10 @@ SPLIT_AMOUNT = int(os.environ["SPLIT_AMOUNT"])
 class Split:
     def __init__(self):
         self.closed = False
+        self.eof_received_by_client = []
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, 
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST,
         EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS)
 
 
@@ -36,10 +37,27 @@ class Split:
         return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
 
     def _get_eof_counter(self, fields):
-        return SPLIT_AMOUNT if len(fields) == 1 else fields[2]
+        return SPLIT_AMOUNT if len(fields) == 1 else int(fields[2])
 
-    def _send_eof_to_all(self, client_id):
-        self.output_queue.send(message_protocol.internal.serialize([client_id]))
+    def _on_eof(self, client_id, counter):
+        if client_id not in self.eof_received_by_client:
+            self.eof_received_by_client.append(client_id)
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
+            )
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
+                )
+            else:
+                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+        else:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] EOF already processed for client {client_id}, passing counter={counter}"
+            )
+            self.input_queue.send(
+                message_protocol.internal.serialize([client_id, "EOF", counter])
+            )
 
     def _get_hash_index_queue(self,account_id: str, cant_queues: int) -> int:
         hash_value = 5381 
@@ -58,15 +76,7 @@ class Split:
             client_id = fields[0]
 
             if self._is_eof(fields):
-                counter = self._get_eof_counter(fields)
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
-                )
-                if counter > 1:
-                    self.input_queue.send(
-                        message_protocol.internal.serialize([client_id, "EOF", counter - 1])
-                    )
-                self._send_eof_to_all(client_id)
+                self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
 

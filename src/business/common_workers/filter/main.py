@@ -16,6 +16,8 @@ INPUT_ROUTING_KEYS = os.environ.get("INPUT_ROUTING_KEYS", "").split(",") if os.e
 OUTPUT_EXCHANGE_NAME = os.environ.get("OUTPUT_EXCHANGE_NAME")
 OUTPUT_ROUTING_KEYS = os.environ.get("OUTPUT_ROUTING_KEYS", "").split(",") if os.environ.get("OUTPUT_ROUTING_KEYS") else None
 
+FILTER_AMOUNT = int(os.environ.get("FILTER_AMOUNT", "1"))
+
 _max_amount_env = os.environ.get("MAX_AMOUNT")
 MAX_AMOUNT = float(_max_amount_env) if _max_amount_env is not None else None
 GE_DATE = os.environ.get("GE_DATE")
@@ -29,6 +31,7 @@ ADD_QUERY_ID = bool(os.environ.get("ADD_QUERY_ID") == "True")
 class Filter:
     def __init__(self):
         self.closed = False
+        self.eof_received_by_client = []
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
 
         if(INPUT_EXCHANGE_NAME is None or INPUT_ROUTING_KEYS is None):
@@ -51,6 +54,32 @@ class Filter:
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
 
+    def _is_eof(self, fields):
+        return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
+
+    def _get_eof_counter(self, fields):
+        return FILTER_AMOUNT if len(fields) == 1 else int(fields[2])
+
+    def _on_eof(self, client_id, counter):
+        if client_id not in self.eof_received_by_client:
+            self.eof_received_by_client.append(client_id)
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
+            )
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
+                )
+            else:
+                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+        else:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] EOF already processed for client {client_id}, passing counter={counter}"
+            )
+            self.input_queue.send(
+                message_protocol.internal.serialize([client_id, "EOF", counter])
+            )
+
     def _on_message(self, message, ack, nack):
         if self.closed:
             ack()
@@ -59,11 +88,8 @@ class Filter:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 1:
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
-                )
-                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+            if self._is_eof(fields):
+                self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
 
