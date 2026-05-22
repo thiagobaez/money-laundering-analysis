@@ -4,7 +4,6 @@ import signal
 
 from common import middleware, message_protocol, transaction_item
 
-ID = int(os.environ["ID"])
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 
@@ -25,6 +24,8 @@ _pay_fmts_env = os.environ.get("PAY_FMTS")
 PAY_FMTS = set(_pay_fmts_env.split(",")) if _pay_fmts_env is not None else None
 USD_ONLY = bool(os.environ.get("USD_ONLY") == "True")
 ADD_QUERY_ID = bool(os.environ.get("ADD_QUERY_ID") == "True")
+
+
 class Filter:
     def __init__(self):
         self.closed = False

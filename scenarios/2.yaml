@@ -43,7 +43,6 @@ services:
       - q4_filter_date
       - q5_filter
     environment:
-    - ID=1
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -60,7 +59,6 @@ services:
     depends_on:
       - gateway
     environment:
-    - ID=1
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
     - INPUT_EXCHANGE_NAME=filter_usd_exchange
@@ -76,8 +74,9 @@ services:
     container_name: q4_filter_date
     depends_on:
       - q4_split_1
+      - q4_split_2
+      - q4_split_3
     environment:
-    - ID=1
     - ADD_QUERY_ID=True
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
@@ -100,14 +99,55 @@ services:
       - q4_dt_detect_2
       - q4_dt_detect_3
     environment:
-    - ID=1
     - QUERY_NUMBER=4
     - INPUT_QUEUE=tx_usd_date
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
+    - SPLIT_AMOUNT=3
 
+  q4_split_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: q4_split_2
+    depends_on:
+      - q4_og_detect_1
+      - q4_og_detect_2
+      - q4_og_detect_3
+      - q4_dt_detect_1
+      - q4_dt_detect_2
+      - q4_dt_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
+    - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
+    - MOM_HOST=rabbitmq
+    - SPLIT_AMOUNT=3
+
+  q4_split_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: q4_split_3
+    depends_on:
+      - q4_og_detect_1
+      - q4_og_detect_2
+      - q4_og_detect_3
+      - q4_dt_detect_1
+      - q4_dt_detect_2
+      - q4_dt_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
+    - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
+    - MOM_HOST=rabbitmq
+    - SPLIT_AMOUNT=3
 
   q4_og_detect_1:
     build:
@@ -117,13 +157,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=1
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_1
     - OUTPUT_QUEUE=origin_more_5dest
     - MIN_DESTINATIONS=5
+    - SPLIT_AMOUNT=3
 
   q4_og_detect_2:
     build:
@@ -133,13 +173,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=2
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_2
     - OUTPUT_QUEUE=origin_more_5dest
     - MIN_DESTINATIONS=5
+    - SPLIT_AMOUNT=3
 
   q4_og_detect_3:
     build:
@@ -149,13 +189,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=3
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_3
     - OUTPUT_QUEUE=origin_more_5dest
     - MIN_DESTINATIONS=5
+    - SPLIT_AMOUNT=3
 
   q4_dt_detect_1:
     build:
@@ -165,13 +205,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=1
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_destination_1
     - OUTPUT_QUEUE=destination_more_5origins
     - MIN_ORIGINS=5
+    - SPLIT_AMOUNT=3
 
   q4_dt_detect_2:
     build:
@@ -181,13 +221,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=2
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_destination_2
     - OUTPUT_QUEUE=destination_more_5origins
     - MIN_ORIGINS=5
+    - SPLIT_AMOUNT=3
 
   q4_dt_detect_3:
     build:
@@ -197,13 +237,13 @@ services:
     depends_on:
       - q4_sg_detect
     environment:
-    - ID=3
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_destination_3
     - OUTPUT_QUEUE=destination_more_5origins
     - MIN_ORIGINS=5
+    - SPLIT_AMOUNT=3
 
   q4_sg_detect:
     build:
@@ -213,7 +253,6 @@ services:
     depends_on:
       - gateway
     environment:
-    - ID=1
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - ORIGINS_QUEUE=origin_more_5dest

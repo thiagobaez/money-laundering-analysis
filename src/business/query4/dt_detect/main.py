@@ -11,10 +11,12 @@ EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_ORIGINS = int(os.environ["MIN_ORIGINS"])
+SPLIT_AMOUNT = int(os.environ["SPLIT_AMOUNT"])
 
 class DtDetect:
     def __init__(self):
         self.closed = False
+        self.eof_received = 0
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
@@ -50,7 +52,9 @@ class DtDetect:
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
                 )
-                self._on_eof_message(client_id)
+                self.eof_received += 1
+                if self.eof_received >= SPLIT_AMOUNT:
+                    self._on_eof_message(client_id)
                 ack()
                 return
 

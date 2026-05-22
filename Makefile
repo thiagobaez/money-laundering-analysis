@@ -14,6 +14,14 @@ down:
 	docker compose -f docker-compose.yaml down
 .PHONY: down
 
+switch:
+	@echo Escenarios de prueba:
+	@echo "1) Un cliente, una sola réplica de cada elemento"
+	@echo "2) Un cliente, tres sola réplica de cada elemento"
+	@read -p "Selecciona uno [1-5]: " option;	\
+	cp ./scenarios/$${option}.yaml docker-compose.yaml
+.PHONY: switch
+
 logs:
 	docker compose -f docker-compose.yaml logs
 .PHONY: logs

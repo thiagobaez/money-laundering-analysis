@@ -11,6 +11,7 @@ EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_DESTINATIONS = int(os.environ["MIN_DESTINATIONS"])
+SPLIT_AMOUNT = int(os.environ["SPLIT_AMOUNT"])
 
 class OgDetect:
     def __init__(self):
@@ -19,6 +20,7 @@ class OgDetect:
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
         self.origin_accounts = defaultdict(set)
+        self.eof_received = 0
 
     def _handle_sigterm(self, signum, frame):
         logging.info("Received SIGTERM signal")
@@ -50,7 +52,9 @@ class OgDetect:
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
                 )
-                self._on_eof_message(client_id)
+                self.eof_received += 1
+                if self.eof_received >= SPLIT_AMOUNT:
+                    self._on_eof_message(client_id)
                 ack()
                 return
 

@@ -10,7 +10,7 @@ INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEYS = os.environ["ORIGIN_ROUTING_KEYS"].split(",")
 DESTINATION_ROUTING_KEYS = os.environ["DESTINATION_ROUTING_KEYS"].split(",")
-
+SPLIT_AMOUNT = int(os.environ["SPLIT_AMOUNT"])
 
 class Split:
     def __init__(self):
@@ -32,11 +32,16 @@ class Split:
         return transaction_item.TransactionItem(*fields)
     
     
+    def _is_eof(self, fields):
+        return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
+
+    def _get_eof_counter(self, fields):
+        return SPLIT_AMOUNT if len(fields) == 1 else fields[2]
+
     def _send_eof_to_all(self, client_id):
         self.output_queue.send(message_protocol.internal.serialize([client_id]))
 
-    
-    def _get_hash_index_queue(account_id: str, cant_queues: int) -> int:
+    def _get_hash_index_queue(self,account_id: str, cant_queues: int) -> int:
         hash_value = 5381 
         for caracter in account_id:
             hash_value = ((hash_value << 5) + hash_value) + ord(caracter)
@@ -52,10 +57,15 @@ class Split:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 1:
+            if self._is_eof(fields):
+                counter = self._get_eof_counter(fields)
                 logging.info(
-                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
+                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
                 )
+                if counter > 1:
+                    self.input_queue.send(
+                        message_protocol.internal.serialize([client_id, "EOF", counter - 1])
+                    )
                 self._send_eof_to_all(client_id)
                 ack()
                 return

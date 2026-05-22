@@ -14,7 +14,6 @@ MIN_COMMON = int(os.environ["MIN_COMMON"])
 NUM_OG_WORKERS = int(os.environ.get("NUM_OG_WORKERS", "1"))
 NUM_DT_WORKERS = int(os.environ.get("NUM_DT_WORKERS", "1"))
 
-
 class SgDetect:
     def __init__(self):
         self.closed = False
@@ -22,9 +21,7 @@ class SgDetect:
         self.origins_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, ORIGINS_QUEUE)
         self.destinations_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, DESTINATIONS_QUEUE)
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
-        # A[origin] = set of destinations  (from og_detect)
         self.A = defaultdict(set)
-        # B[destination] = set of origins  (from dt_detect)
         self.B = defaultdict(set)
         self.client_id = None
         self.origins_eofs = 0
@@ -53,7 +50,6 @@ class SgDetect:
                 ack()
                 return
 
-            # fields: [client_id, query_number, origin_account, dest1, dest2, ...]
             origin = fields[2]
             self.A[origin].update(fields[3:])
             ack()
@@ -77,7 +73,6 @@ class SgDetect:
                 ack()
                 return
 
-            # fields: [client_id, query_number, destination_account, origin1, origin2, ...]
             dest = fields[2]
             self.B[dest].update(fields[3:])
             ack()

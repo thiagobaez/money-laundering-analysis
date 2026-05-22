@@ -56,21 +56,23 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
             self.channel = self.connection.channel()
             self.exchange_name = exchange_name
             self.routing_keys = routing_keys
+            self.queue_name = None
 
             self.channel.exchange_declare(
                 exchange=exchange_name, exchange_type="direct"
             )
-            result = self.channel.queue_declare(queue="", exclusive=True)
-            self.queue_name = result.method.queue
-
-            for key in routing_keys:
-                self.channel.queue_bind(
-                    exchange=exchange_name, queue=self.queue_name, routing_key=key
-                )
         except pika.exceptions.AMQPConnectionError as e:
             raise RuntimeError(f"No se pudo conectar al broker: {e}")
 
     def start_consuming(self, on_message_callback):
+        # Shared named queue so multiple workers compete instead of each getting every message
+        self.queue_name = "_".join(sorted(self.routing_keys))
+        self.channel.queue_declare(queue=self.queue_name, durable=True)
+        for key in self.routing_keys:
+            self.channel.queue_bind(
+                exchange=self.exchange_name, queue=self.queue_name, routing_key=key
+            )
+
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
