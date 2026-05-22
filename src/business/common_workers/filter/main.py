@@ -129,7 +129,7 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = Filter()
     try:
         worker.run()
