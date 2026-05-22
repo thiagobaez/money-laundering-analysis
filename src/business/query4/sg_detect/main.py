@@ -19,9 +19,15 @@ class SgDetect:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.origins_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, ORIGINS_QUEUE)
-        self.destinations_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, DESTINATIONS_QUEUE)
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        self.origins_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, ORIGINS_QUEUE
+        )
+        self.destinations_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, DESTINATIONS_QUEUE
+        )
+        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, OUTPUT_QUEUE
+        )
         # A[origin] = set of destinations  (from og_detect)
         self.A = defaultdict(set)
         # B[destination] = set of origins  (from dt_detect)
@@ -46,7 +52,9 @@ class SgDetect:
 
             if len(fields) == 2:
                 self.origins_eofs += 1
-                logging.info(f"[QUERY {QUERY_NUMBER}] EOF {self.origins_eofs}/{NUM_OG_WORKERS} from origins queue for client {client_id}")
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] EOF {self.origins_eofs}/{NUM_OG_WORKERS} from origins queue for client {client_id}"
+                )
                 self.client_id = client_id
                 if self.origins_eofs >= NUM_OG_WORKERS:
                     self.origins_queue.stop_consuming()
@@ -58,7 +66,9 @@ class SgDetect:
             self.A[origin].update(fields[3:])
             ack()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error processing origins message: {e}")
+            logging.error(
+                f"[QUERY {QUERY_NUMBER}] Error processing origins message: {e}"
+            )
             nack()
 
     def _on_destinations_message(self, message, ack, nack):
@@ -71,7 +81,9 @@ class SgDetect:
 
             if len(fields) == 2:
                 self.destinations_eofs += 1
-                logging.info(f"[QUERY {QUERY_NUMBER}] EOF {self.destinations_eofs}/{NUM_DT_WORKERS} from destinations queue for client {client_id}")
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] EOF {self.destinations_eofs}/{NUM_DT_WORKERS} from destinations queue for client {client_id}"
+                )
                 if self.destinations_eofs >= NUM_DT_WORKERS:
                     self.destinations_queue.stop_consuming()
                 ack()
@@ -82,7 +94,9 @@ class SgDetect:
             self.B[dest].update(fields[3:])
             ack()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error processing destinations message: {e}")
+            logging.error(
+                f"[QUERY {QUERY_NUMBER}] Error processing destinations message: {e}"
+            )
             nack()
 
     def _emit_results(self):
@@ -90,9 +104,12 @@ class SgDetect:
             for dest, origins_of_dest in self.B.items():
                 intersection = dests_of_origin & origins_of_dest
                 if len(intersection) >= MIN_COMMON:
-                    self.output_queue.send(message_protocol.internal.serialize(
-                        [self.client_id, QUERY_NUMBER, origin, dest] + list(intersection)
-                    ))
+                    self.output_queue.send(
+                        message_protocol.internal.serialize(
+                            [self.client_id, QUERY_NUMBER, origin, dest]
+                            + list(intersection)
+                        )
+                    )
         self.output_queue.send(message_protocol.internal.serialize([self.client_id]))
 
     def run(self):

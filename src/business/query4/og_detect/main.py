@@ -12,12 +12,17 @@ ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_DESTINATIONS = int(os.environ["MIN_DESTINATIONS"])
 
+
 class OgDetect:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
+        )
+        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, OUTPUT_QUEUE
+        )
         self.origin_accounts = defaultdict(set)
 
     def _handle_sigterm(self, signum, frame):
@@ -25,18 +30,22 @@ class OgDetect:
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
-            
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
-    
-    
+
     def _on_eof_message(self, client_id):
         for origin_account, destinations_accounts in self.origin_accounts.items():
             if len(destinations_accounts) >= MIN_DESTINATIONS:
-                self.output_queue.send(message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, origin_account] + list(destinations_accounts)))
-        self.output_queue.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
+                self.output_queue.send(
+                    message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER, origin_account]
+                        + list(destinations_accounts)
+                    )
+                )
+        self.output_queue.send(
+            message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+        )
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -55,7 +64,9 @@ class OgDetect:
                 return
 
             tx = self._parse_transaction(fields[2:])
-            logging.info(f"[QUERY {QUERY_NUMBER}] Received transaction from account with amount {tx._amount_paid}")
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] Received transaction from account with amount {tx._amount_paid}"
+            )
 
             self.origin_accounts[tx.get_from_account()].add(tx.get_to_account())
 
@@ -75,7 +86,8 @@ class OgDetect:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")        
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)

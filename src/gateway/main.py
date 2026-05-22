@@ -25,8 +25,11 @@ INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
 
+
 def handle_client_request(client_socket, msg_handler):
-    input_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
+    input_queue = MessageMiddlewareExchangeRabbitMQ(
+        MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+    )
     try:
         while True:
             message = external.recv_msg(client_socket)
@@ -73,7 +76,9 @@ def handle_client_response(client_map, num_expected_eofs):
                 eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
                 logging.info(
                     "EOF %d/%d received for client_id=%s",
-                    eof_counts[client_id], num_expected_eofs, client_id,
+                    eof_counts[client_id],
+                    num_expected_eofs,
+                    client_id,
                 )
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
@@ -114,7 +119,9 @@ def main():
         client_map = manager.dict()
         sigterm_received = manager.Value("c_short", 0)
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            processes_pool.apply_async(handle_client_response, (client_map, NUM_EXPECTED_EOFS))
+            processes_pool.apply_async(
+                handle_client_response, (client_map, NUM_EXPECTED_EOFS)
+            )
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 logging.info("Listening to connections")

@@ -16,33 +16,31 @@ class Split:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, 
-        EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS)
-
+        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, INPUT_QUEUE
+        )
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS
+        )
 
     def _handle_sigterm(self, signum, frame):
         logging.info("Received SIGTERM signal")
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
-            
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
-    
-    
+
     def _send_eof_to_all(self, client_id):
         self.output_queue.send(message_protocol.internal.serialize([client_id]))
 
-    
     def _get_hash_index_queue(account_id: str, cant_queues: int) -> int:
-        hash_value = 5381 
+        hash_value = 5381
         for caracter in account_id:
             hash_value = ((hash_value << 5) + hash_value) + ord(caracter)
             hash_value &= 0xFFFFFFFF
         return hash_value % cant_queues
-    
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -62,8 +60,12 @@ class Split:
 
             tx = self._parse_transaction(fields[2:])
 
-            i_origin = self._get_hash_index_queue(tx.get_from_account(), len(ORIGIN_ROUTING_KEYS))
-            i_destination = self._get_hash_index_queue(tx.get_to_account(), len(DESTINATION_ROUTING_KEYS))
+            i_origin = self._get_hash_index_queue(
+                tx.get_from_account(), len(ORIGIN_ROUTING_KEYS)
+            )
+            i_destination = self._get_hash_index_queue(
+                tx.get_to_account(), len(DESTINATION_ROUTING_KEYS)
+            )
 
             logging.info(
                 f"[QUERY {QUERY_NUMBER}] Routing transaction {tx._amount_paid} to origin queue {ORIGIN_ROUTING_KEYS[i_origin]} and destination queue {DESTINATION_ROUTING_KEYS[i_destination]}"
@@ -87,7 +89,8 @@ class Split:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")        
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)

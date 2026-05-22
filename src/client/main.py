@@ -10,6 +10,7 @@ SERVER_PORT = int(os.environ["SERVER_PORT"])
 INPUT_FILE = os.environ["INPUT_FILE"]
 OUTPUT_FILE = os.environ["OUTPUT_FILE"]
 
+
 class Client:
     def __init__(self):
         self._socket = None
@@ -26,7 +27,9 @@ class Client:
             for row in csv_reader:
                 line = ",".join(row)
                 logging.info(f"Sending line: {line}")
-                external.send_data(self._socket, line.encode("utf-8"), external.MsgType.DATA)
+                external.send_data(
+                    self._socket, line.encode("utf-8"), external.MsgType.DATA
+                )
 
         external.send_eof(self._socket)
 

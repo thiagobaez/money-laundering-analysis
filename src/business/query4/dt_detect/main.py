@@ -12,12 +12,17 @@ ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_ORIGINS = int(os.environ["MIN_ORIGINS"])
 
+
 class DtDetect:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
+        )
+        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, OUTPUT_QUEUE
+        )
         self.destinations_accounts = defaultdict(set)
 
     def _handle_sigterm(self, signum, frame):
@@ -25,18 +30,22 @@ class DtDetect:
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
-            
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
-    
-    
+
     def _on_eof_message(self, client_id):
         for destination_account, origins_accounts in self.destinations_accounts.items():
             if len(origins_accounts) >= MIN_ORIGINS:
-                self.output_queue.send(message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, destination_account] + list(origins_accounts)))
-        self.output_queue.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
+                self.output_queue.send(
+                    message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER, destination_account]
+                        + list(origins_accounts)
+                    )
+                )
+        self.output_queue.send(
+            message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+        )
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -56,7 +65,9 @@ class DtDetect:
 
             tx = self._parse_transaction(fields[2:])
 
-            logging.info(f"[QUERY {QUERY_NUMBER}] Received transaction from account with amount {tx._amount_paid}")
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] Received transaction from account with amount {tx._amount_paid}"
+            )
             self.destinations_accounts[tx._to_account].add(tx._from_account)
 
             ack()
@@ -75,7 +86,8 @@ class DtDetect:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")        
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
