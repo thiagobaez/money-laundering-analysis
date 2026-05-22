@@ -8,6 +8,7 @@ def generate_compose(
     n_converter: int,
     n_filter_amount: int,
     input_file: str,
+    send_rate_limit: float = 0.001,
 ):
     services = {}
 
@@ -40,6 +41,7 @@ def generate_compose(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            f"SEND_RATE_LIMIT={send_rate_limit}",
         ],
     }
 
@@ -140,6 +142,7 @@ def main():
     parser.add_argument("--filter-amount", type=int, default=2)
     parser.add_argument("--input-file", type=str, default="HI-Small_Trans.csv.gz")
     parser.add_argument("--output", type=str, default="docker-compose-q5.yaml")
+    parser.add_argument("--send-rate-limit", type=float, default=0.001)
     args = parser.parse_args()
 
     compose = generate_compose(
