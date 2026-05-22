@@ -1,0 +1,99 @@
+services:
+  client:
+    container_name: client
+    build:
+      context: ./src
+      dockerfile: client/Dockerfile
+    depends_on:
+      - gateway
+    environment:
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+    - INPUT_FILE=/datasets/Hipersmall_Trans.csv.gz
+    - OUTPUT_FILE=/output/client0/output.csv
+    volumes:
+    - ./datasets:/datasets
+    - ./output:/output
+  gateway:
+    build:
+      context: ./src/
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_q5_fmt
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUE=results_queue
+    - NUM_EXPECTED_EOFS=1
+    - PYTHONUNBUFFERED=1
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+
+  filter_q5_fmt:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_q5_fmt
+    depends_on:
+      - gateway
+    environment:
+    - ID=1
+    - QUERY_NUMBER=5
+    - MOM_HOST=rabbitmq
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_q5_fmt
+    - OUTPUT_QUEUE=converter_queue
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - PAY_FMTS=Wire,ACH
+
+  converter:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/converter/Dockerfile
+      network: host
+    container_name: converter
+    depends_on:
+      - filter_q5_fmt
+    environment:
+    - ID=1
+    - MOM_HOST=rabbitmq
+    - INPUT_QUEUE=converter_queue
+    - OUTPUT_QUEUE=q5_amount_filter_queue
+    - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
+
+  filter_q5_amount:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_q5_amount
+    depends_on:
+      - converter
+    environment:
+    - ID=2
+    - QUERY_NUMBER=5
+    - ADD_QUERY_ID=True
+    - MOM_HOST=rabbitmq
+    - INPUT_QUEUE=q5_amount_filter_queue
+    - OUTPUT_QUEUE=results_queue
+    - MAX_AMOUNT=1.0
+
+  rabbitmq:
+    build:
+      context: ./src/
+      dockerfile: rabbitmq/Dockerfile
+    container_name: rabbitmq
+    environment:
+    - RABBITMQ_LOG_LEVELS=error
+    healthcheck:
+      interval: 5s
+      retries: 10
+      start_period: 50s
+      test: rabbitmq-diagnostics check_port_connectivity
+      timeout: 3s
+    ports:
+    - 5672:5672
+    - 15672:15672
