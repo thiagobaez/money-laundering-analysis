@@ -1,42 +1,60 @@
 import os
+import shutil
 import logging
 import signal
+import hashlib
 
 from common import middleware, message_protocol, transaction_item
-from collections import defaultdict
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
-OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
+OUTPUT_EXCHANGE_NAME = os.environ["OUTPUT_EXCHANGE_NAME"]
+OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
 MIN_DESTINATIONS = int(os.environ["MIN_DESTINATIONS"])
+
+DATA_DIR = "/data"
 
 class OgDetect:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
-        self.origin_accounts = defaultdict(set)
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
 
     def _handle_sigterm(self, signum, frame):
-        logging.info("Received SIGTERM signal")
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
-            
+
+    def _get_hash_index_queue(self, account_id: str, cant_queues: int) -> int:
+        digest = hashlib.md5(account_id.encode()).digest()
+        return int.from_bytes(digest[:4], "big") % cant_queues
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
-    
-    
+
+    def _client_dir(self, client_id):
+        return os.path.join(DATA_DIR, str(client_id))
+
     def _on_eof_message(self, client_id):
-        for origin_account, destinations_accounts in self.origin_accounts.items():
-            if len(destinations_accounts) >= MIN_DESTINATIONS:
-                self.output_queue.send(message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, origin_account] + list(destinations_accounts)))
-        self.output_queue.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
+        client_dir = self._client_dir(client_id)
+        if os.path.exists(client_dir):
+            for filename in os.listdir(client_dir):
+                origin_account = filename[:-4]
+                filepath = os.path.join(client_dir, filename)
+                with open(filepath) as f:
+                    destinations = set(line.strip() for line in f if line.strip())
+                if len(destinations) >= MIN_DESTINATIONS:
+                    message = message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER, origin_account] + list(destinations))
+                    index_queue = self._get_hash_index_queue(origin_account, len(OUTPUT_ROUTING_KEYS))
+                    self.output_queue.send(message, OUTPUT_ROUTING_KEYS[index_queue])
+            shutil.rmtree(client_dir)
+        eof = message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+        for routing_key in OUTPUT_ROUTING_KEYS:
+            self.output_queue.send(eof, routing_key)
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -47,17 +65,16 @@ class OgDetect:
             client_id = fields[0]
 
             if len(fields) == 1:
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}"
-                )
                 self._on_eof_message(client_id)
                 ack()
                 return
 
             tx = self._parse_transaction(fields[2:])
-            logging.info(f"[QUERY {QUERY_NUMBER}] Received transaction from account with amount {tx._amount_paid}")
 
-            self.origin_accounts[tx.get_from_account()].add(tx.get_to_account())
+            client_dir = self._client_dir(client_id)
+            os.makedirs(client_dir, exist_ok=True)
+            with open(os.path.join(client_dir, f"{tx.get_from_account()}.csv"), "a") as f:
+                f.write(tx.get_to_account() + "\n")
 
             ack()
         except Exception as e:
@@ -65,7 +82,6 @@ class OgDetect:
             nack()
 
     def run(self):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Starting og_detect worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -75,11 +91,11 @@ class OgDetect:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")        
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = OgDetect()
     try:
         worker.run()

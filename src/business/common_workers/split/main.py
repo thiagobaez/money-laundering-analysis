@@ -1,6 +1,7 @@
 import os
 import logging
 import signal
+import hashlib
 
 from common import middleware, message_protocol, transaction_item
 
@@ -23,7 +24,6 @@ class Split:
 
 
     def _handle_sigterm(self, signum, frame):
-        logging.info("Received SIGTERM signal")
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
@@ -42,9 +42,6 @@ class Split:
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
-            )
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
@@ -52,19 +49,13 @@ class Split:
             else:
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
         else:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] EOF already processed for client {client_id}, passing counter={counter}"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
 
-    def _get_hash_index_queue(self,account_id: str, cant_queues: int) -> int:
-        hash_value = 5381 
-        for caracter in account_id:
-            hash_value = ((hash_value << 5) + hash_value) + ord(caracter)
-            hash_value &= 0xFFFFFFFF
-        return hash_value % cant_queues
+    def _get_hash_index_queue(self, account_id: str, cant_queues: int) -> int:
+        digest = hashlib.md5(account_id.encode()).digest()
+        return int.from_bytes(digest[:4], "big") % cant_queues
     
 
     def _on_message(self, message, ack, nack):
@@ -85,9 +76,6 @@ class Split:
             i_origin = self._get_hash_index_queue(tx.get_from_account(), len(ORIGIN_ROUTING_KEYS))
             i_destination = self._get_hash_index_queue(tx.get_to_account(), len(DESTINATION_ROUTING_KEYS))
 
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] Routing transaction {tx._amount_paid} to origin queue {ORIGIN_ROUTING_KEYS[i_origin]} and destination queue {DESTINATION_ROUTING_KEYS[i_destination]}"
-            )
             self.output_queue.send(message, ORIGIN_ROUTING_KEYS[i_origin])
             self.output_queue.send(message, DESTINATION_ROUTING_KEYS[i_destination])
 
@@ -97,7 +85,6 @@ class Split:
             nack()
 
     def run(self):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Starting split worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -111,7 +98,7 @@ class Split:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = Split()
     try:
         worker.run()

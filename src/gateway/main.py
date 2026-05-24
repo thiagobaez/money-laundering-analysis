@@ -34,14 +34,9 @@ def handle_client_request(client_socket, msg_handler):
             if message[0] == external.MsgType.DATA:
                 csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
                 input_queue.send(msg_handler.serialize_tx([csv_fields]))
-                external.send_msg(client_socket, external.MsgType.ACK)
 
             if message[0] == external.MsgType.EOF:
                 input_queue.send(msg_handler.serialize_eof())
-                external.send_msg(client_socket, external.MsgType.ACK)
-                logging.info(
-                    "All data received for client_id=%s", msg_handler.client_id
-                )
                 return
 
     except socket.error:
@@ -65,16 +60,12 @@ def handle_client_response(client_map, num_expected_eofs):
                 return
             client_id = deserialized[0]
             if client_id not in client_map:
-                nack()
+                ack()
                 return
             handler, client_socket = client_map[client_id]
             result = handler.deserialize_result(message)
             if result is None:
                 eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
-                logging.info(
-                    "EOF %d/%d received for client_id=%s",
-                    eof_counts[client_id], num_expected_eofs, client_id,
-                )
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
                     del client_map[client_id]

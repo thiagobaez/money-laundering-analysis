@@ -12,7 +12,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/cortito.csv
+    - INPUT_FILE=/datasets/HI-Small_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
     volumes:
     - ./datasets:/datasets
@@ -31,7 +31,7 @@ services:
     - INPUT_ROUTING_KEYS=filter_usd,q5_filter
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - NUM_EXPECTED_EOFS=3
+    - NUM_EXPECTED_EOFS=5
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
@@ -231,12 +231,12 @@ services:
       - q4_dt_detect_3
     environment:
     - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
     - INPUT_QUEUE=tx_usd_date
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - SPLIT_AMOUNT=3
 
   q4_split_2:
     build:
@@ -252,12 +252,12 @@ services:
       - q4_dt_detect_3
     environment:
     - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
     - INPUT_QUEUE=tx_usd_date
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - SPLIT_AMOUNT=3
 
   q4_split_3:
     build:
@@ -273,12 +273,12 @@ services:
       - q4_dt_detect_3
     environment:
     - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
     - INPUT_QUEUE=tx_usd_date
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - SPLIT_AMOUNT=3
 
   q4_og_detect_1:
     build:
@@ -286,15 +286,17 @@ services:
       dockerfile: business/query4/og_detect/Dockerfile
     container_name: q4_og_detect_1
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_1
-    - OUTPUT_QUEUE=origin_more_5dest
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
-    - SPLIT_AMOUNT=3
 
   q4_og_detect_2:
     build:
@@ -302,15 +304,17 @@ services:
       dockerfile: business/query4/og_detect/Dockerfile
     container_name: q4_og_detect_2
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_2
-    - OUTPUT_QUEUE=origin_more_5dest
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
-    - SPLIT_AMOUNT=3
 
   q4_og_detect_3:
     build:
@@ -318,15 +322,17 @@ services:
       dockerfile: business/query4/og_detect/Dockerfile
     container_name: q4_og_detect_3
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
     - EXCHANGE_NAME=q4_split_exchange
     - ORIGIN_ROUTING_KEY=tx_origin_3
-    - OUTPUT_QUEUE=origin_more_5dest
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
-    - SPLIT_AMOUNT=3
 
   q4_dt_detect_1:
     build:
@@ -334,15 +340,17 @@ services:
       dockerfile: business/query4/dt_detect/Dockerfile
     container_name: q4_dt_detect_1
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
-    - EXCHANGE_NAME=q4_split_exchange
-    - ORIGIN_ROUTING_KEY=tx_destination_1
-    - OUTPUT_QUEUE=destination_more_5origins
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_1
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
-    - SPLIT_AMOUNT=3
 
   q4_dt_detect_2:
     build:
@@ -350,15 +358,17 @@ services:
       dockerfile: business/query4/dt_detect/Dockerfile
     container_name: q4_dt_detect_2
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
-    - EXCHANGE_NAME=q4_split_exchange
-    - ORIGIN_ROUTING_KEY=tx_destination_2
-    - OUTPUT_QUEUE=destination_more_5origins
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_2
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
-    - SPLIT_AMOUNT=3
 
   q4_dt_detect_3:
     build:
@@ -366,28 +376,70 @@ services:
       dockerfile: business/query4/dt_detect/Dockerfile
     container_name: q4_dt_detect_3
     depends_on:
-      - q4_sg_detect
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
-    - EXCHANGE_NAME=q4_split_exchange
-    - ORIGIN_ROUTING_KEY=tx_destination_3
-    - OUTPUT_QUEUE=destination_more_5origins
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_3
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
-    - SPLIT_AMOUNT=3
 
-  q4_sg_detect:
+  q4_sg_detect_1:
     build:
       context: ./src/
       dockerfile: business/query4/sg_detect/Dockerfile
-    container_name: q4_sg_detect
+    container_name: q4_sg_detect_1
     depends_on:
       - gateway
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
-    - ORIGINS_QUEUE=origin_more_5dest
-    - DESTINATIONS_QUEUE=destination_more_5origins
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_1
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_1
+    - OUTPUT_QUEUE=results_queue
+    - MIN_COMMON=5
+    - NUM_OG_WORKERS=3
+    - NUM_DT_WORKERS=3
+
+  q4_sg_detect_2:
+    build:
+      context: ./src/
+      dockerfile: business/query4/sg_detect/Dockerfile
+    container_name: q4_sg_detect_2
+    depends_on:
+      - gateway
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_2
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_2
+    - OUTPUT_QUEUE=results_queue
+    - MIN_COMMON=5
+    - NUM_OG_WORKERS=3
+    - NUM_DT_WORKERS=3
+
+  q4_sg_detect_3:
+    build:
+      context: ./src/
+      dockerfile: business/query4/sg_detect/Dockerfile
+    container_name: q4_sg_detect_3
+    depends_on:
+      - gateway
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_3
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_3
     - OUTPUT_QUEUE=results_queue
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3

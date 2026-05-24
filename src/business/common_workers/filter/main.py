@@ -46,7 +46,6 @@ class Filter:
     
 
     def _handle_sigterm(self, signum, frame):
-        logging.info("Received SIGTERM signal")
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
@@ -63,9 +62,6 @@ class Filter:
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] EOF received for client {client_id}, counter={counter}"
-            )
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
@@ -73,9 +69,6 @@ class Filter:
             else:
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
         else:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] EOF already processed for client {client_id}, passing counter={counter}"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -103,7 +96,6 @@ class Filter:
             )
 
             if passes:
-                logging.info(f"[QUERY {QUERY_NUMBER}] Transaction passed filter: {tx._amount_received}")
                 if ADD_QUERY_ID:
                     self.output_queue.send(
                         message_protocol.internal.serialize(
@@ -119,7 +111,6 @@ class Filter:
             nack()
 
     def run(self):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Starting filter worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -134,7 +125,7 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = Filter()
     try:
         worker.run()

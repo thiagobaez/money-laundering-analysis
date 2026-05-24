@@ -25,7 +25,6 @@ class Client:
             next(csv_reader)
             for row in csv_reader:
                 line = ",".join(row)
-                logging.info(f"Sending line: {line}")
                 external.send_data(self._socket, line.encode("utf-8"), external.MsgType.DATA)
 
         external.send_eof(self._socket)
@@ -42,7 +41,6 @@ class Client:
         try:
             while True:
                 msg_type, payload = external.recv_msg(self._socket)
-                logging.info(f"Received message of type {msg_type.name}")
                 if msg_type == external.MsgType.EOF:
                     break
                 if msg_type in MSG_TYPE_TO_FILE:
