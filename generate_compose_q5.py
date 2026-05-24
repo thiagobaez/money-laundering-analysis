@@ -27,17 +27,15 @@ def generate_compose(
     }
 
     # gateway
-    fmt_routing_keys = ",".join(f"filter_q5_fmt_{i}" for i in range(n_filter_fmt))
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
         "depends_on": {"rabbitmq": {"condition": "service_healthy"}},
         "environment": [
-            "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-            f"INPUT_ROUTING_KEYS={fmt_routing_keys}",
+            "INPUT_QUEUE=filter_q5_fmt_queue",  # queue directa, sin exchange
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
-            f"NUM_EXPECTED_EOFS={n_filter_amount}",
+            "NUM_EXPECTED_EOFS=1",
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
@@ -55,15 +53,11 @@ def generate_compose(
             "container_name": f"filter_q5_fmt_{i}",
             "depends_on": ["gateway"],
             "environment": [
-                f"ID={i}",
                 "QUERY_NUMBER=5",
                 "MOM_HOST=rabbitmq",
-                "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-                f"INPUT_ROUTING_KEYS=filter_q5_fmt_{i}",
+                "INPUT_QUEUE=filter_q5_fmt_queue",
                 "OUTPUT_QUEUE=converter_queue",
-                "FILTER_PREFIX=filter_q5_fmt",
-                f"NUM_INSTANCES={n_filter_fmt}",
-                "NUM_EXPECTED_EOFS=1",
+                f"FILTER_AMOUNT={n_filter_fmt}",
                 "GE_DATE=2022-09-01",
                 "LE_DATE=2022-09-05",
                 "PAY_FMTS=Wire,ACH",
@@ -82,13 +76,10 @@ def generate_compose(
             "container_name": f"converter_{i}",
             "depends_on": fmt_depends,
             "environment": [
-                f"ID={i}",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=converter_queue",
                 "OUTPUT_QUEUE=filter_q5_amount_queue",
-                "CONVERTER_PREFIX=converter",
-                f"NUM_INSTANCES={n_converter}",
-                f"NUM_EXPECTED_EOFS={n_filter_fmt}",
+                f"CONVERTER_AMOUNT={n_converter}",
                 "FRANKFURTER_BASE=https://api.frankfurter.dev/v2",
             ],
         }
@@ -104,15 +95,12 @@ def generate_compose(
             "container_name": f"filter_q5_amount_{i}",
             "depends_on": converter_depends,
             "environment": [
-                f"ID={i}",
                 "QUERY_NUMBER=5",
                 "ADD_QUERY_ID=True",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=filter_q5_amount_queue",
                 "OUTPUT_QUEUE=results_queue",
-                "FILTER_PREFIX=filter_q5_amount",
-                f"NUM_INSTANCES={n_filter_amount}",
-                f"NUM_EXPECTED_EOFS={n_converter}",
+                f"FILTER_AMOUNT={n_filter_amount}",
                 "MAX_AMOUNT=1.0",
             ],
         }
@@ -150,6 +138,7 @@ def main():
         n_converter=args.converter,
         n_filter_amount=args.filter_amount,
         input_file=args.input_file,
+        send_rate_limit=args.send_rate_limit,
     )
 
     with open(args.output, "w") as f:
@@ -159,6 +148,7 @@ def main():
     print(f"  filter_q5_fmt:    {args.filter_fmt}")
     print(f"  converter:        {args.converter}")
     print(f"  filter_q5_amount: {args.filter_amount}")
+    print(f"  send_rate_limit:  {args.send_rate_limit}")
 
 
 if __name__ == "__main__":
