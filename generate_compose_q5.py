@@ -11,12 +11,14 @@ def generate_compose(
     send_rate_limit: float = 0.001,
 ):
     services = {}
+    rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
     # client
+    amount_depends = {f"filter_q5_amount_{i}": {"condition": "service_started"} for i in range(n_filter_amount)}
     services["client0"] = {
         "container_name": "client",
         "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
-        "depends_on": ["gateway"],
+        "depends_on": amount_depends,
         "environment": [
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
@@ -30,9 +32,9 @@ def generate_compose(
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
-        "depends_on": {"rabbitmq": {"condition": "service_healthy"}},
+        "depends_on": rabbitmq_healthy,
         "environment": [
-            "INPUT_QUEUE=filter_q5_fmt_queue",  # queue directa, sin exchange
+            "INPUT_QUEUE=filter_q5_fmt_queue",
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
             "NUM_EXPECTED_EOFS=1",
@@ -51,12 +53,12 @@ def generate_compose(
                 "dockerfile": "business/common_workers/filter/Dockerfile",
             },
             "container_name": f"filter_q5_fmt_{i}",
-            "depends_on": ["gateway"],
+            "depends_on": {**rabbitmq_healthy, "gateway": {"condition": "service_started"}},
             "environment": [
                 "QUERY_NUMBER=5",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=filter_q5_fmt_queue",
-                "OUTPUT_QUEUE=converter_queue",
+                "OUTPUT_QUEUES=converter_queue",
                 f"FILTER_AMOUNT={n_filter_fmt}",
                 "GE_DATE=2022-09-01",
                 "LE_DATE=2022-09-05",
@@ -65,7 +67,7 @@ def generate_compose(
         }
 
     # converter
-    fmt_depends = [f"filter_q5_fmt_{i}" for i in range(n_filter_fmt)]
+    fmt_depends = {f"filter_q5_fmt_{i}": {"condition": "service_started"} for i in range(n_filter_fmt)}
     for i in range(n_converter):
         services[f"converter_{i}"] = {
             "build": {
@@ -74,7 +76,7 @@ def generate_compose(
                 "network": "host",
             },
             "container_name": f"converter_{i}",
-            "depends_on": fmt_depends,
+            "depends_on": {**rabbitmq_healthy, **fmt_depends},
             "environment": [
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=converter_queue",
@@ -85,7 +87,7 @@ def generate_compose(
         }
 
     # filter_q5_amount
-    converter_depends = [f"converter_{i}" for i in range(n_converter)]
+    converter_depends = {f"converter_{i}": {"condition": "service_started"} for i in range(n_converter)}
     for i in range(n_filter_amount):
         services[f"filter_q5_amount_{i}"] = {
             "build": {
@@ -93,13 +95,13 @@ def generate_compose(
                 "dockerfile": "business/common_workers/filter/Dockerfile",
             },
             "container_name": f"filter_q5_amount_{i}",
-            "depends_on": converter_depends,
+            "depends_on": {**rabbitmq_healthy, **converter_depends},
             "environment": [
                 "QUERY_NUMBER=5",
                 "ADD_QUERY_ID=True",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=filter_q5_amount_queue",
-                "OUTPUT_QUEUE=results_queue",
+                "OUTPUT_QUEUES=results_queue",
                 f"FILTER_AMOUNT={n_filter_amount}",
                 "MAX_AMOUNT=1.0",
             ],
@@ -142,7 +144,7 @@ def main():
     )
 
     with open(args.output, "w") as f:
-        yaml.dump(compose, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(compose, f, default_flow_style=False, sort_keys=False, Dumper=yaml.SafeDumper)
 
     print(f"Generated {args.output} with:")
     print(f"  filter_q5_fmt:    {args.filter_fmt}")
