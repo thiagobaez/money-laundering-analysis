@@ -8,7 +8,11 @@ QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 
 INPUT_QUEUE = os.environ.get("INPUT_QUEUE")
-OUTPUT_QUEUE = os.environ.get("OUTPUT_QUEUE")
+OUTPUT_QUEUES = (
+    os.environ.get("OUTPUT_QUEUES", "").split(",")
+    if os.environ.get("OUTPUT_QUEUES")
+    else None
+)
 
 INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 INPUT_ROUTING_KEYS = (
@@ -40,22 +44,29 @@ class Filter:
     def __init__(self):
         self.eof_seen: set[str] = set()
 
-        if INPUT_EXCHANGE_NAME is None or INPUT_ROUTING_KEYS is None:
-            self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
-                MOM_HOST, INPUT_QUEUE
-            )
-        else:
+        if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
                 MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
             )
-
-        if OUTPUT_EXCHANGE_NAME is None or OUTPUT_ROUTING_KEYS is None:
-            self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
-                MOM_HOST, OUTPUT_QUEUE
-            )
         else:
-            self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
-                MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS
+            self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+                MOM_HOST, INPUT_QUEUE
+            )
+
+        if OUTPUT_QUEUES:
+            self.output_queues = [
+                middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
+                for q in OUTPUT_QUEUES
+            ]
+        elif OUTPUT_EXCHANGE_NAME and OUTPUT_ROUTING_KEYS:
+            self.output_queues = [
+                middleware.MessageMiddlewareExchangeRabbitMQ(
+                    MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS
+                )
+            ]
+        else:
+            raise ValueError(
+                "Must define OUTPUT_QUEUES or OUTPUT_EXCHANGE_NAME+OUTPUT_ROUTING_KEYS"
             )
 
     def _parse_transaction(self, fields):
@@ -78,6 +89,10 @@ class Filter:
             and (not USD_ONLY or tx.is_usd())
         )
 
+    def _send_output(self, message):
+        for q in self.output_queues:
+            q.send(message)
+
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
@@ -86,7 +101,7 @@ class Filter:
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+                self._send_output(message_protocol.internal.serialize([client_id]))
                 self.eof_seen.discard(client_id)
         else:
             if counter > 1:
@@ -107,13 +122,13 @@ class Filter:
             tx = self._parse_transaction(fields[1])
             if self._passes(tx):
                 if ADD_QUERY_ID:
-                    self.output_queue.send(
+                    self._send_output(
                         message_protocol.internal.serialize(
                             [client_id, QUERY_NUMBER] + fields[1]
                         )
                     )
                 else:
-                    self.output_queue.send(message)
+                    self._send_output(message)
 
             ack()
         except Exception as e:
@@ -127,8 +142,9 @@ class Filter:
     def close(self):
         try:
             self.input_queue.stop_consuming()
-            self.output_queue.close()
             self.input_queue.close()
+            for q in self.output_queues:
+                q.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 
