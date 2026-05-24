@@ -23,7 +23,7 @@ up:
 	docker compose -f $(COMPOSE_FILE) logs --follow
 
 down:
-	rm -rf output
+	sudo rm -rf output
 	docker compose -f $(COMPOSE_FILE) stop -t 5
 	docker compose -f $(COMPOSE_FILE) down
 
