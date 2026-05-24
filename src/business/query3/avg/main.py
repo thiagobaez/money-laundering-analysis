@@ -6,7 +6,12 @@ from common import middleware, message_protocol, transaction_item
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
-INPUT_QUEUE = os.environ["INPUT_QUEUE"]
+INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
+INPUT_ROUTING_KEYS = (
+    os.environ.get("INPUT_ROUTING_KEYS", "").split(",")
+    if os.environ.get("INPUT_ROUTING_KEYS")
+    else None
+)
 OUTPUT_EXCHANGE = os.environ["OUTPUT_EXCHANGE"]
 AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
 
@@ -17,8 +22,8 @@ class Avg:
         # {client_id: {payment_format: [suma, count]}}
         self.accum: dict[str, dict[str, list]] = {}
 
-        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
-            MOM_HOST, INPUT_QUEUE
+        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
         )
         self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, OUTPUT_EXCHANGE, []
@@ -71,10 +76,10 @@ class Avg:
 
             tx = self._parse_transaction(fields[1])
             client_data = self.accum.setdefault(client_id, {})
-            fmt = tx._payment_format
+            fmt = tx.get_payment_format()
             if fmt not in client_data:
                 client_data[fmt] = [0.0, 0]
-            client_data[fmt][0] += tx._amount_received
+            client_data[fmt][0] += tx.get_amount_received()
             client_data[fmt][1] += 1
 
             ack()
