@@ -79,6 +79,9 @@ class TransactionItem:
             le_date is None or date_str <= le_date
         )
 
+    def get_payment_format(self) -> str:
+        return self._payment_format
+
     def has_payment_format(self, fmt: str) -> bool:
         return self._payment_format == fmt
 
@@ -90,9 +93,6 @@ class TransactionItem:
 
     def get_to_account(self) -> str:
         return self._to_account
-
-    def is_between(self, date_from: datetime, date_to: datetime) -> bool:
-        return date_from <= self._timestamp <= date_to
 
     def _currency_to_iso(self, currency_name: str) -> str:
         code = _DATASET_NAME_TO_ISO.get(currency_name)
