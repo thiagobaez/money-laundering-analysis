@@ -21,42 +21,55 @@ _QUERY_RESULT_TYPES = {
 SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
 MOM_HOST = os.environ["MOM_HOST"]
-INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
-INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
+INPUT_QUEUE_NAME = os.environ.get("INPUT_QUEUE")
+INPUT_ROUTING_KEYS = (
+    os.environ.get("INPUT_ROUTING_KEYS", "").split(",")
+    if os.environ.get("INPUT_ROUTING_KEYS")
+    else None
+)
+INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
 SEND_RATE_LIMIT = float(os.environ.get("SEND_RATE_LIMIT", "0"))
 
 
 def handle_client_request(client_socket, msg_handler):
-    input_queue = MessageMiddlewareExchangeRabbitMQ(
-        MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
-    )
+    outputs = []
+    if INPUT_QUEUE_NAME:
+        outputs.append(MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE_NAME))
+    if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
+        outputs.append(
+            MessageMiddlewareExchangeRabbitMQ(
+                MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+            )
+        )
     try:
         while True:
             message = external.recv_msg(client_socket)
-
             if message[0] == external.MsgType.DATA:
                 csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
-                input_queue.send(msg_handler.serialize_tx([csv_fields]))
+                serialized = msg_handler.serialize_tx([csv_fields])
+                for output in outputs:
+                    output.send(serialized)
                 external.send_msg(client_socket, external.MsgType.ACK)
                 if SEND_RATE_LIMIT > 0:
                     time.sleep(SEND_RATE_LIMIT)
-
             if message[0] == external.MsgType.EOF:
-                input_queue.send(msg_handler.serialize_eof())
+                eof = msg_handler.serialize_eof()
+                for output in outputs:
+                    output.send(eof)
                 external.send_msg(client_socket, external.MsgType.ACK)
                 logging.info(
                     "All data received for client_id=%s", msg_handler.client_id
                 )
                 return
-
     except socket.error:
         logging.error("The connection with the client was lost")
     except Exception as e:
         logging.error(e)
     finally:
-        input_queue.close()
+        for output in outputs:
+            output.close()
 
 
 def handle_client_response(client_map, num_expected_eofs):
