@@ -39,6 +39,7 @@ class AvgJoiner:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
+        self.output_lock = threading.Lock()
 
     def _get_file_lock(self, client_id: str, payment_format: str) -> threading.Lock:
         key = (client_id, payment_format)
@@ -60,12 +61,18 @@ class AvgJoiner:
                 writer = csv.writer(f)
                 writer.writerow(tx.to_fields())
 
+    def _send_output(self, message):
+        with self.output_lock:
+            self.output_queue.send(message)
+
     def _flush_output_batch(self, client_id: str):
         batch = self.output_batches.pop(client_id, [])
 
         if batch:
-            self.output_queue.send(
-                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
+            self._send_output(
+                message_protocol.internal.serialize(
+                    [client_id, QUERY_NUMBER, batch]
+                ),
             )
 
     def _append_output_rows(self, client_id: str, rows: list):
@@ -106,8 +113,11 @@ class AvgJoiner:
         client_dir = os.path.join(DATA_DIR, client_id)
         if os.path.exists(client_dir):
             for f in os.listdir(client_dir):
-                os.remove(os.path.join(client_dir, f))
-            os.rmdir(client_dir)
+                path = os.path.join(client_dir, f)
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    pass
         with self.file_locks_lock:
             keys_to_remove = [k for k in self.file_locks if k[0] == client_id]
             for k in keys_to_remove:
@@ -119,7 +129,7 @@ class AvgJoiner:
                 f"[QUERY {QUERY_NUMBER}] both EOFs received, sending EOF downstream client={client_id}"
             )
             self._flush_output_batch(client_id)
-            self.output_queue.send(message_protocol.internal.serialize([client_id]))
+            self._send_output(message_protocol.internal.serialize([client_id]))
             self.second_period_eof.discard(client_id)
             self.avg_eof.discard(client_id)
 
