@@ -109,6 +109,9 @@ class TransactionItem:
     def get_amount_received_in_usd(self, rate: float) -> float:
         return self._amount_received / rate
 
+    def get_amount_received(self) -> float:
+        return self._amount_received
+
     def convert_to_usd(self, rate: float) -> None:
         amount_usd = self.get_amount_received_in_usd(rate)
         self._amount_received = amount_usd
