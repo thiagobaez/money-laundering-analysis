@@ -5,11 +5,11 @@ import argparse
 
 def generate_compose_q3(
     input_file: str,
-    send_rate_limit: float = 0.001,
     n_filter_usd: int = 1,
     n_split_date: int = 1,
     n_avg: int = 1,
     n_avg_joiner: int = 1,
+    batch_size: int = 100,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -27,6 +27,7 @@ def generate_compose_q3(
             "SERVER_PORT=5678",
             f"INPUT_FILE=/datasets/{input_file}",
             "OUTPUT_FILE=/output/client0/output.csv",
+            f"BATCH_SIZE={batch_size}",
         ],
         "volumes": ["./datasets:/datasets", "./output:/output"],
     }
@@ -44,7 +45,7 @@ def generate_compose_q3(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
-            f"SEND_RATE_LIMIT={send_rate_limit}",
+            f"BATCH_SIZE={batch_size}",
         ],
     }
 
@@ -67,6 +68,7 @@ def generate_compose_q3(
                 "OUTPUT_QUEUES=q3_split_queue",
                 f"FILTER_AMOUNT={n_filter_usd}",
                 "USD_ONLY=True",
+                f"BATCH_SIZE={batch_size}",
             ],
         }
 
@@ -89,6 +91,8 @@ def generate_compose_q3(
                 "OUTPUT_QUEUE=results_queue",
                 f"AVG_JOINER_AMOUNT={n_avg_joiner}",
                 f"AVG_AMOUNT={n_avg}",
+                f"DATA_DIR=/data/joiner_{i}",
+                f"BATCH_SIZE={batch_size}",
             ],
         }
 
@@ -142,6 +146,7 @@ def generate_compose_q3(
                 "SECOND_PERIOD_GE=2022-09-06",
                 "SECOND_PERIOD_LE=2022-09-15",
                 f"SPLIT_AMOUNT={n_split_date}",
+                f"BATCH_SIZE={batch_size}",
             ],
         }
 
@@ -167,7 +172,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q3.yaml")
     parser.add_argument("--input-file", type=str, default="HI-Small_Trans.csv.gz")
     parser.add_argument("--output", type=str, default="docker-compose-q3.yaml")
-    parser.add_argument("--send-rate-limit", type=float, default=0.001)
+    parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--filter-usd", type=int, default=1)
     parser.add_argument("--split-date", type=int, default=1)
     parser.add_argument("--avg", type=int, default=1)
@@ -176,11 +181,11 @@ def main():
 
     compose = generate_compose_q3(
         input_file=args.input_file,
-        send_rate_limit=args.send_rate_limit,
         n_filter_usd=args.filter_usd,
         n_split_date=args.split_date,
         n_avg=args.avg,
         n_avg_joiner=args.avg_joiner,
+        batch_size=args.batch_size,
     )
 
     with open(args.output, "w") as f:
@@ -198,7 +203,7 @@ def main():
     print(f"  split_date:    {args.split_date}")
     print(f"  avg:           {args.avg}")
     print(f"  avg_joiner:    {args.avg_joiner}")
-    print(f"  send_rate_limit: {args.send_rate_limit}")
+    print(f"  batch_size:    {args.batch_size}")
 
 
 if __name__ == "__main__":

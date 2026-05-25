@@ -1,5 +1,3 @@
-import csv
-import io
 import logging
 import socket
 import os
@@ -12,10 +10,10 @@ from common.middleware import MessageMiddlewareExchangeRabbitMQ
 from common.message_protocol import internal, external
 
 _QUERY_RESULT_TYPES = {
-    1: external.MsgType.RESULT_QUERY1,
-    3: external.MsgType.RESULT_QUERY3,
-    4: external.MsgType.RESULT_QUERY4,
-    5: external.MsgType.RESULT_QUERY5,
+    1: external.MsgType.RESULT_BATCH_QUERY1,
+    3: external.MsgType.RESULT_BATCH_QUERY3,
+    4: external.MsgType.RESULT_BATCH_QUERY4,
+    5: external.MsgType.RESULT_BATCH_QUERY5,
 }
 
 SERVER_HOST = os.environ["SERVER_HOST"]
@@ -30,7 +28,7 @@ INPUT_ROUTING_KEYS = (
 INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
-SEND_RATE_LIMIT = float(os.environ.get("SEND_RATE_LIMIT", "0"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -43,17 +41,18 @@ def handle_client_request(client_socket, msg_handler):
                 MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
             )
         )
+    batch = []
     try:
         while True:
             message = external.recv_msg(client_socket)
-            if message[0] == external.MsgType.DATA:
-                csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
-                serialized = msg_handler.serialize_tx([csv_fields])
+            if message[0] == external.MsgType.DATA_BATCH:
+                batch = external.recv_batch(message[1])
+                serialized = internal.serialize(
+                    [msg_handler.client_id, batch]
+                )
                 for output in outputs:
                     output.send(serialized)
                 external.send_msg(client_socket, external.MsgType.ACK)
-                if SEND_RATE_LIMIT > 0:
-                    time.sleep(SEND_RATE_LIMIT)
             if message[0] == external.MsgType.EOF:
                 eof = msg_handler.serialize_eof()
                 for output in outputs:
@@ -102,11 +101,9 @@ def handle_client_response(client_map, num_expected_eofs):
                     del client_map[client_id]
                     del eof_counts[client_id]
             else:
-                query_id, *data = result
+                query_id, rows = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
-                external.send_data(
-                    client_socket, ",".join(data).encode("utf-8"), msg_type
-                )
+                external.send_batch(client_socket, rows, msg_type)
             ack()
         except socket.error:
             logging.error("The connection with the client was lost")

@@ -38,11 +38,13 @@ _pay_fmts_env = os.environ.get("PAY_FMTS")
 PAY_FMTS = set(_pay_fmts_env.split(",")) if _pay_fmts_env is not None else None
 USD_ONLY = bool(os.environ.get("USD_ONLY") == "True")
 ADD_QUERY_ID = bool(os.environ.get("ADD_QUERY_ID") == "True")
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class Filter:
     def __init__(self):
         self.eof_seen: set[str] = set()
+        self.batches: dict[str, list] = {}
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -93,6 +95,19 @@ class Filter:
         for q in self.output_queues:
             q.send(message)
 
+    def _flush_batch(self, client_id):
+        batch = self.batches.pop(client_id, [])
+
+        if not batch:
+            return
+
+        if ADD_QUERY_ID:
+            self._send_output(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
+            )
+        else:
+            self._send_output(message_protocol.internal.serialize([client_id, batch]))
+
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
@@ -108,6 +123,9 @@ class Filter:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter])
                 )
+            else:
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
         try:
@@ -115,20 +133,19 @@ class Filter:
             client_id = fields[0]
 
             if self._is_eof(fields):
+                self._flush_batch(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
 
-            tx = self._parse_transaction(fields[1])
-            if self._passes(tx):
-                if ADD_QUERY_ID:
-                    self._send_output(
-                        message_protocol.internal.serialize(
-                            [client_id, QUERY_NUMBER] + fields[1]
-                        )
-                    )
-                else:
-                    self._send_output(message)
+            tx_list = [self._parse_transaction(tx_fields) for tx_fields in fields[1]]
+
+            for tx in tx_list:
+                if self._passes(tx):
+                    self.batches.setdefault(client_id, []).append(tx.to_fields())
+
+                    if len(self.batches[client_id]) >= BATCH_SIZE:
+                        self._flush_batch(client_id)
 
             ack()
         except Exception as e:

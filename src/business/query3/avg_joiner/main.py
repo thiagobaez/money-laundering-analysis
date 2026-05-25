@@ -15,6 +15,7 @@ OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "1"))
 AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class AvgJoiner:
@@ -27,6 +28,7 @@ class AvgJoiner:
         self.avg_results_lock = threading.Lock()
         self.file_locks: dict[tuple, threading.Lock] = {}
         self.file_locks_lock = threading.Lock()
+        self.output_batches: dict[str, list] = {}
 
         self.second_period_consumer = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, SECOND_PERIOD_QUEUE
@@ -50,7 +52,7 @@ class AvgJoiner:
         os.makedirs(client_dir, exist_ok=True)
         return os.path.join(client_dir, f"{payment_format}.csv")
 
-    def _write_tx_to_disk(self, client_id: str, tx: transaction_item.TransactionItem):
+    def _write_tx_to_disk(self, client_id: str, tx):
         path = self._file_path(client_id, tx.get_payment_format())
         file_lock = self._get_file_lock(client_id, tx.get_payment_format())
         with file_lock:
@@ -58,9 +60,29 @@ class AvgJoiner:
                 writer = csv.writer(f)
                 writer.writerow(tx.to_fields())
 
+    def _flush_output_batch(self, client_id: str):
+        batch = self.output_batches.pop(client_id, [])
+
+        if batch:
+            self.output_queue.send(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
+            )
+
+    def _append_output_rows(self, client_id: str, rows: list):
+        if not rows:
+            return
+
+        self.output_batches.setdefault(client_id, []).extend(rows)
+
+        if len(self.output_batches[client_id]) >= BATCH_SIZE:
+            self._flush_output_batch(client_id)
+
     def _flush_to_output(self, client_id: str, payment_format: str, avg: float):
         path = self._file_path(client_id, payment_format)
         file_lock = self._get_file_lock(client_id, payment_format)
+
+        output_batch = []
+
         with file_lock:
             if not os.path.exists(path):
                 return
@@ -70,16 +92,15 @@ class AvgJoiner:
                     try:
                         tx = transaction_item.TransactionItem(*row)
                         if tx.is_sent_amount_below(avg / 100):
-                            self.output_queue.send(
-                                message_protocol.internal.serialize(
-                                    [client_id, QUERY_NUMBER] + tx.to_fields()
-                                )
-                            )
+                            output_batch.append(tx.to_fields())
+
                     except Exception as e:
                         logging.error(
                             f"[QUERY {QUERY_NUMBER}] Error processing tx from disk: {e}"
                         )
             os.remove(path)
+
+        self._append_output_rows(client_id, output_batch)
 
     def _cleanup_client(self, client_id: str):
         client_dir = os.path.join(DATA_DIR, client_id)
@@ -97,11 +118,13 @@ class AvgJoiner:
             logging.info(
                 f"[QUERY {QUERY_NUMBER}] both EOFs received, sending EOF downstream client={client_id}"
             )
+            self._flush_output_batch(client_id)
             self.output_queue.send(message_protocol.internal.serialize([client_id]))
             self.second_period_eof.discard(client_id)
             self.avg_eof.discard(client_id)
 
     def _on_second_period_message(self, message, ack, nack):
+        logging.info(f"[QUERY {QUERY_NUMBER}] Received second period message")
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
@@ -130,27 +153,30 @@ class AvgJoiner:
                                 [client_id, "EOF", counter]
                             )
                         )
+                    else:
+                        self.second_period_eof.add(client_id)
+                        self.eof_seen.discard(client_id)
+                        self._try_send_eof(client_id)
                 ack()
                 return
 
-            tx = transaction_item.TransactionItem(*fields[1])
-            payment_format = tx.get_payment_format()
+            rows = fields[1]
+            output_batch = []
 
-            with self.avg_results_lock:
-                avg = self.avg_results.get(client_id, {}).get(payment_format)
+            for row in rows:
+                tx = transaction_item.TransactionItem(*row)
+                payment_format = tx.get_payment_format()
 
-            if avg is not None:
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] live tx amount={tx.get_amount_received()} threshold={avg / 100} passes={tx.is_sent_amount_below(avg / 100)}"
-                )
-                if tx.is_sent_amount_below(avg / 100):
-                    self.output_queue.send(
-                        message_protocol.internal.serialize(
-                            [client_id, QUERY_NUMBER] + tx.to_fields()
-                        )
-                    )
-            else:
-                self._write_tx_to_disk(client_id, tx)
+                with self.avg_results_lock:
+                    avg = self.avg_results.get(client_id, {}).get(payment_format)
+
+                if avg is not None:
+                    if tx.is_sent_amount_below(avg / 100):
+                        output_batch.append(tx.to_fields())
+                else:
+                    self._write_tx_to_disk(client_id, tx)
+
+            self._append_output_rows(client_id, output_batch)
 
             ack()
         except Exception as e:
@@ -160,6 +186,7 @@ class AvgJoiner:
             nack()
 
     def _on_avg_message(self, message, ack, nack):
+        logging.info(f"[QUERY {QUERY_NUMBER}] Received avg message")
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
@@ -181,15 +208,18 @@ class AvgJoiner:
                 ack()
                 return
 
-            payment_format = fields[1]
-            avg = float(fields[2])
+            avg_rows = fields[1]
 
-            with self.avg_results_lock:
-                if client_id not in self.avg_results:
-                    self.avg_results[client_id] = {}
-                self.avg_results[client_id][payment_format] = avg
+            for payment_format, avg_value in avg_rows:
+                avg = float(avg_value)
 
-            self._flush_to_output(client_id, payment_format, avg)
+                with self.avg_results_lock:
+                    if client_id not in self.avg_results:
+                        self.avg_results[client_id] = {}
+
+                    self.avg_results[client_id][payment_format] = avg
+
+                self._flush_to_output(client_id, payment_format, avg)
 
             ack()
         except Exception as e:

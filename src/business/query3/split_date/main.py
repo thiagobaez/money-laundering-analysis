@@ -14,11 +14,14 @@ FIRST_PERIOD_LE = os.environ["FIRST_PERIOD_LE"]
 SECOND_PERIOD_GE = os.environ["SECOND_PERIOD_GE"]
 SECOND_PERIOD_LE = os.environ["SECOND_PERIOD_LE"]
 SPLIT_AMOUNT = int(os.environ.get("SPLIT_AMOUNT", "1"))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class SplitDate:
     def __init__(self):
         self.eof_seen: set[str] = set()
+        self.first_batches: dict[str, dict[int, list]] = {}
+        self.second_batches: dict[str, list] = {}
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -37,12 +40,39 @@ class SplitDate:
     def _get_eof_counter(self, fields):
         return SPLIT_AMOUNT if len(fields) == 1 else int(fields[2])
 
-    def _get_avg_routing_key(self, payment_format: str) -> str:
+    def _get_first_queue_idx(self, payment_format: str) -> int:
         hash_value = 5381
         for c in payment_format:
             hash_value = ((hash_value << 5) + hash_value) + ord(c)
             hash_value &= 0xFFFFFFFF
-        return self.first_period_queues[hash_value % len(self.first_period_queues)]
+        return hash_value % len(self.first_period_queues)
+
+    def _flush_first_batch(self, client_id, idx):
+        batch = self.first_batches.get(client_id, {}).pop(idx, [])
+
+        if batch:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] sending first_period batch client={client_id} queue_idx={idx} rows={len(batch)}"
+            )
+            self.first_period_queues[idx].send(
+                message_protocol.internal.serialize([client_id, batch])
+            )
+
+    def _flush_second_batch(self, client_id):
+        batch = self.second_batches.pop(client_id, [])
+        if batch:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] sending second_period batch client={client_id} rows={len(batch)}"
+            )
+            self.second_period_queue.send(
+                message_protocol.internal.serialize([client_id, batch])
+            )
+
+    def _flush_all_batches(self, client_id):
+        for idx in list(self.first_batches.get(client_id, {}).keys()):
+            self._flush_first_batch(client_id, idx)
+        self.first_batches.pop(client_id, None)
+        self._flush_second_batch(client_id)
 
     def _on_eof(self, client_id, counter):
         eof = message_protocol.internal.serialize([client_id])
@@ -56,6 +86,10 @@ class SplitDate:
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
+                self._flush_all_batches(client_id)
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] sending EOF downstream client={client_id}"
+                )
                 for q in self.first_period_queues:
                     q.send(eof)
                 self.second_period_queue.send(eof)
@@ -66,27 +100,41 @@ class SplitDate:
                     message_protocol.internal.serialize([client_id, "EOF", counter])
                 )
             else:
+                self._flush_all_batches(client_id)
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] sending EOF downstream client={client_id}"
+                )
                 for q in self.first_period_queues:
                     q.send(eof)
                 self.second_period_queue.send(eof)
                 self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
+        logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
+                logging.info(f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}")
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
-            tx_fields = fields[1]
-            tx = transaction_item.TransactionItem(*tx_fields)
 
-            if tx.is_in_date_range(FIRST_PERIOD_GE, FIRST_PERIOD_LE):
-                self._get_avg_routing_key(tx.get_payment_format()).send(message)
-            elif tx.is_in_date_range(SECOND_PERIOD_GE, SECOND_PERIOD_LE):
-                self.second_period_queue.send(message)
+            tx_list = [transaction_item.TransactionItem(*f) for f in fields[1]]
+
+            for tx in tx_list:
+                if tx.is_in_date_range(FIRST_PERIOD_GE, FIRST_PERIOD_LE):
+                    idx = self._get_first_queue_idx(tx.get_payment_format())
+                    self.first_batches.setdefault(client_id, {}).setdefault(
+                        idx, []
+                    ).append(tx.to_fields())
+                    if len(self.first_batches[client_id][idx]) >= BATCH_SIZE:
+                        self._flush_first_batch(client_id, idx)
+                elif tx.is_in_date_range(SECOND_PERIOD_GE, SECOND_PERIOD_LE):
+                    self.second_batches.setdefault(client_id, []).append(tx.to_fields())
+                    if len(self.second_batches[client_id]) >= BATCH_SIZE:
+                        self._flush_second_batch(client_id)
 
             ack()
         except Exception as e:
