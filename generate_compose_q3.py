@@ -88,6 +88,7 @@ def generate_compose_q3(
                 f"AVG_ROUTING_KEY=avg_joiner_{i}",
                 "OUTPUT_QUEUE=results_queue",
                 f"AVG_JOINER_AMOUNT={n_avg_joiner}",
+                f"AVG_AMOUNT={n_avg}",
             ],
         }
 
@@ -106,8 +107,7 @@ def generate_compose_q3(
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
-                f"INPUT_EXCHANGE_NAME=first_period_exchange",
-                f"INPUT_ROUTING_KEYS=avg_{i}",
+                f"INPUT_QUEUE=avg_queue_{i}",
                 "OUTPUT_EXCHANGE=avg_exchange",
                 f"OUTPUT_ROUTING_KEYS={avg_joiner_routing_keys}",
                 f"AVG_AMOUNT={n_avg}",
@@ -135,8 +135,7 @@ def generate_compose_q3(
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=q3_split_queue",
-                "FIRST_PERIOD_EXCHANGE=first_period_exchange",
-                f"FIRST_PERIOD_ROUTING_KEYS={avg_routing_keys}",
+                f"FIRST_PERIOD_QUEUES={','.join([f'avg_queue_{i}' for i in range(n_avg)])}",
                 "SECOND_PERIOD_QUEUE=second_period_queue",
                 "FIRST_PERIOD_GE=2022-09-01",
                 "FIRST_PERIOD_LE=2022-09-05",
