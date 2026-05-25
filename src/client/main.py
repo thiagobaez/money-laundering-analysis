@@ -61,8 +61,11 @@ class Client:
                     break
                 if msg_type in MSG_TYPE_TO_QUERY:
                     if msg_type not in file_handles:
-                        path = os.path.join(output_dir, MSG_TYPE_TO_QUERY[msg_type])
-                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        query_num = MSG_TYPE_TO_QUERY[msg_type]
+                        path = os.path.join(output_dir, f"query{query_num}", "tx.csv")
+                        os.makedirs(
+                            os.path.join(output_dir, f"query{query_num}"), exist_ok=True
+                        )
                         file_handles[msg_type] = open(path, "w", encoding="utf-8")
                         if self._header:
                             file_handles[msg_type].write(",".join(self._header) + "\n")
