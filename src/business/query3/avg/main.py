@@ -6,26 +6,20 @@ from common import middleware, message_protocol, transaction_item
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
-INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
-INPUT_ROUTING_KEYS = (
-    os.environ.get("INPUT_ROUTING_KEYS", "").split(",")
-    if os.environ.get("INPUT_ROUTING_KEYS")
-    else None
-)
+INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_EXCHANGE = os.environ["OUTPUT_EXCHANGE"]
 OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
-AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
 
 
 class Avg:
     def __init__(self):
-        self.eof_seen: set[str] = set()
         # {client_id: {payment_format: [suma, count]}}
         self.accum: dict[str, dict[str, list]] = {}
 
-        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, INPUT_QUEUE
         )
+
         self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, OUTPUT_EXCHANGE, OUTPUT_ROUTING_KEYS
         )
@@ -36,9 +30,6 @@ class Avg:
     def _is_eof(self, fields):
         return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
 
-    def _get_eof_counter(self, fields):
-        return AVG_AMOUNT if len(fields) == 1 else int(fields[2])
-
     def _flush(self, client_id):
         client_data = self.accum.pop(client_id, {})
         for payment_format, (suma, count) in client_data.items():
@@ -48,32 +39,13 @@ class Avg:
             )
         self.output_exchange.send(message_protocol.internal.serialize([client_id]))
 
-    def _on_eof(self, client_id, counter):
-        logging.info(
-            f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
-        )
-        if client_id not in self.eof_seen:
-            self.eof_seen.add(client_id)
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
-                )
-            else:
-                self._flush(client_id)
-                self.eof_seen.discard(client_id)
-        else:
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter])
-                )
-
     def _on_message(self, message, ack, nack):
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._flush(client_id)
                 ack()
                 return
 
