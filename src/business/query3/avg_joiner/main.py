@@ -14,6 +14,7 @@ AVG_ROUTING_KEY = os.environ["AVG_ROUTING_KEY"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "1"))
+AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
 
 
 class AvgJoiner:
@@ -21,6 +22,7 @@ class AvgJoiner:
         self.eof_seen: set[str] = set()
         self.second_period_eof: set[str] = set()
         self.avg_eof: set[str] = set()
+        self.avg_eof_counts: dict[str, int] = {}
         self.avg_results: dict[str, dict[str, float]] = {}
         self.avg_results_lock = threading.Lock()
         self.file_locks: dict[tuple, threading.Lock] = {}
@@ -163,6 +165,14 @@ class AvgJoiner:
             client_id = fields[0]
 
             if len(fields) == 1:
+                logging.info(f"[QUERY {QUERY_NUMBER}] avg EOF client={client_id}")
+                self.avg_eof_counts[client_id] = (
+                    self.avg_eof_counts.get(client_id, 0) + 1
+                )
+                if self.avg_eof_counts[client_id] < AVG_AMOUNT:
+                    ack()
+                    return
+                del self.avg_eof_counts[client_id]
                 with self.avg_results_lock:
                     self.avg_results.pop(client_id, {})
                 self._cleanup_client(client_id)
