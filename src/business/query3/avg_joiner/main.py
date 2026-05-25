@@ -19,6 +19,8 @@ AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "1"))
 class AvgJoiner:
     def __init__(self):
         self.eof_seen: set[str] = set()
+        self.second_period_eof: set[str] = set()
+        self.avg_eof: set[str] = set()
         self.avg_results: dict[str, dict[str, float]] = {}
         self.avg_results_lock = threading.Lock()
         self.file_locks: dict[tuple, threading.Lock] = {}
@@ -88,6 +90,15 @@ class AvgJoiner:
             for k in keys_to_remove:
                 del self.file_locks[k]
 
+    def _try_send_eof(self, client_id: str):
+        if client_id in self.second_period_eof and client_id in self.avg_eof:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] both EOFs received, sending EOF downstream client={client_id}"
+            )
+            self.output_queue.send(message_protocol.internal.serialize([client_id]))
+            self.second_period_eof.discard(client_id)
+            self.avg_eof.discard(client_id)
+
     def _on_second_period_message(self, message, ack, nack):
         try:
             fields = message_protocol.internal.deserialize(message)
@@ -95,7 +106,9 @@ class AvgJoiner:
 
             if len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF"):
                 counter = AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[2])
-                logging.info(f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}")
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] second_period EOF client={client_id} counter={counter}"
+                )
                 if client_id not in self.eof_seen:
                     self.eof_seen.add(client_id)
                     if counter > 1:
@@ -105,10 +118,9 @@ class AvgJoiner:
                             )
                         )
                     else:
-                        self.output_queue.send(
-                            message_protocol.internal.serialize([client_id])
-                        )
+                        self.second_period_eof.add(client_id)
                         self.eof_seen.discard(client_id)
+                        self._try_send_eof(client_id)
                 else:
                     if counter > 1:
                         self.second_period_consumer.send(
@@ -126,6 +138,9 @@ class AvgJoiner:
                 avg = self.avg_results.get(client_id, {}).get(payment_format)
 
             if avg is not None:
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] live tx amount={tx.get_amount_received()} threshold={avg / 100} passes={tx.is_sent_amount_below(avg / 100)}"
+                )
                 if tx.is_sent_amount_below(avg / 100):
                     self.output_queue.send(
                         message_protocol.internal.serialize(
@@ -151,6 +166,8 @@ class AvgJoiner:
                 with self.avg_results_lock:
                     self.avg_results.pop(client_id, {})
                 self._cleanup_client(client_id)
+                self.avg_eof.add(client_id)
+                self._try_send_eof(client_id)
                 ack()
                 return
 
@@ -191,7 +208,7 @@ class AvgJoiner:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = AvgJoiner()
     signal.signal(signal.SIGTERM, lambda s, f: worker.stop())
     try:
