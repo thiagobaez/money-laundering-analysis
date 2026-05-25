@@ -105,7 +105,7 @@ class Avg:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = Avg()
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
