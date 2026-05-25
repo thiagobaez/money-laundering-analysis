@@ -18,12 +18,36 @@ make logs     # Ver logs de los servicios
 
 El comando `make switch` muestra un menú para elegir la query a ejecutar. Luego usar `make up` para iniciar el sistema con la query seleccionada.
 
+### Query 3 — configuración de workers
+
+El docker compose de Q3 se genera con el script `generate_compose_q3.py`:
+
+```bash
+python3 generate_compose_q3.py \
+  --input-file HI-Small_Trans.csv.gz \
+  --send-rate-limit 0.001 \
+  --output docker-compose-q3.yaml
+```
+
+Parámetros disponibles:
+
+- `--filter-usd`: cantidad de workers `filter_usd` (default: 1)
+- `--split-date`: cantidad de workers `split_date` (default: 1)
+- `--avg`: cantidad de workers `avg` (default: 1)
+- `--avg-joiner`: cantidad de workers `avg_joiner` (default: 1)
+- `--input-file`: archivo de dataset en `datasets/` (default: `HI-Small_Trans.csv.gz`)
+- `--send-rate-limit`: delay en segundos entre mensajes del gateway (default: 0.001)
+- `--output`: nombre del archivo generado (default: `docker-compose-q3.yaml`)
+
+Luego seleccionar Q3 con `make switch` y levantar con `make up`.
+
+
 ### Query 5 — configuración de workers
 
 El docker compose de Q5 se genera con el script `generate_compose_q5.py`:
 
 ```bash
-python3 generate_compose.py \
+python3 generate_compose_q5.py \
   --filter-fmt 2 \
   --converter 2 \
   --filter-amount 2 \
