@@ -7,8 +7,7 @@ from common import middleware, message_protocol, transaction_item
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
-FIRST_PERIOD_EXCHANGE = os.environ["FIRST_PERIOD_EXCHANGE"]
-FIRST_PERIOD_ROUTING_KEYS = os.environ["FIRST_PERIOD_ROUTING_KEYS"].split(",")
+FIRST_PERIOD_QUEUES = os.environ["FIRST_PERIOD_QUEUES"].split(",")
 SECOND_PERIOD_QUEUE = os.environ["SECOND_PERIOD_QUEUE"]
 FIRST_PERIOD_GE = os.environ["FIRST_PERIOD_GE"]
 FIRST_PERIOD_LE = os.environ["FIRST_PERIOD_LE"]
@@ -24,9 +23,10 @@ class SplitDate:
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
         )
-        self.first_period_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, FIRST_PERIOD_EXCHANGE, FIRST_PERIOD_ROUTING_KEYS
-        )
+        self.first_period_queues = [
+            middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
+            for q in FIRST_PERIOD_QUEUES
+        ]
         self.second_period_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, SECOND_PERIOD_QUEUE
         )
@@ -39,11 +39,10 @@ class SplitDate:
 
     def _get_avg_routing_key(self, payment_format: str) -> str:
         hash_value = 5381
-        for caracter in payment_format:
-            hash_value = ((hash_value << 5) + hash_value) + ord(caracter)
+        for c in payment_format:
+            hash_value = ((hash_value << 5) + hash_value) + ord(c)
             hash_value &= 0xFFFFFFFF
-        idx = hash_value % len(FIRST_PERIOD_ROUTING_KEYS)
-        return FIRST_PERIOD_ROUTING_KEYS[idx]
+        return self.first_period_queues[hash_value % len(self.first_period_queues)]
 
     def _on_eof(self, client_id, counter):
         eof = message_protocol.internal.serialize([client_id])
@@ -57,8 +56,8 @@ class SplitDate:
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                for key in FIRST_PERIOD_ROUTING_KEYS:
-                    self.first_period_exchange.send(eof, routing_key=key)
+                for q in self.first_period_queues:
+                    q.send(eof)
                 self.second_period_queue.send(eof)
                 self.eof_seen.discard(client_id)
         else:
@@ -66,6 +65,11 @@ class SplitDate:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter])
                 )
+            else:
+                for q in self.first_period_queues:
+                    q.send(eof)
+                self.second_period_queue.send(eof)
+                self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
         try:
@@ -80,17 +84,9 @@ class SplitDate:
             tx = transaction_item.TransactionItem(*tx_fields)
 
             if tx.is_in_date_range(FIRST_PERIOD_GE, FIRST_PERIOD_LE):
-                key = self._get_avg_routing_key(tx.get_payment_format())
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] first_period tx date={tx.get_date_iso()} fmt={tx.get_payment_format()} key={key}"
-                )
-                self.first_period_exchange.send(message, routing_key=key)
+                self._get_avg_routing_key(tx.get_payment_format()).send(message)
             elif tx.is_in_date_range(SECOND_PERIOD_GE, SECOND_PERIOD_LE):
                 self.second_period_queue.send(message)
-            else:
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] discarded tx date={tx.get_date_iso()}"
-                )
 
             ack()
         except Exception as e:
@@ -105,7 +101,8 @@ class SplitDate:
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
-            self.first_period_exchange.close()
+            for q in self.first_period_queues:
+                q.close()
             self.second_period_queue.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
