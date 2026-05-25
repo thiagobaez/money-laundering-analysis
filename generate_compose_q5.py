@@ -14,7 +14,10 @@ def generate_compose(
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
     # client
-    amount_depends = {f"filter_q5_amount_{i}": {"condition": "service_started"} for i in range(n_filter_amount)}
+    amount_depends = {
+        f"filter_q5_amount_{i}": {"condition": "service_started"}
+        for i in range(n_filter_amount)
+    }
     services["client0"] = {
         "container_name": "client",
         "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
@@ -53,7 +56,10 @@ def generate_compose(
                 "dockerfile": "business/common_workers/filter/Dockerfile",
             },
             "container_name": f"filter_q5_fmt_{i}",
-            "depends_on": {**rabbitmq_healthy, "gateway": {"condition": "service_started"}},
+            "depends_on": {
+                **rabbitmq_healthy,
+                "gateway": {"condition": "service_started"},
+            },
             "environment": [
                 "QUERY_NUMBER=5",
                 "MOM_HOST=rabbitmq",
@@ -67,7 +73,10 @@ def generate_compose(
         }
 
     # converter
-    fmt_depends = {f"filter_q5_fmt_{i}": {"condition": "service_started"} for i in range(n_filter_fmt)}
+    fmt_depends = {
+        f"filter_q5_fmt_{i}": {"condition": "service_started"}
+        for i in range(n_filter_fmt)
+    }
     for i in range(n_converter):
         services[f"converter_{i}"] = {
             "build": {
@@ -87,7 +96,9 @@ def generate_compose(
         }
 
     # filter_q5_amount
-    converter_depends = {f"converter_{i}": {"condition": "service_started"} for i in range(n_converter)}
+    converter_depends = {
+        f"converter_{i}": {"condition": "service_started"} for i in range(n_converter)
+    }
     for i in range(n_filter_amount):
         services[f"filter_q5_amount_{i}"] = {
             "build": {
@@ -144,7 +155,13 @@ def main():
     )
 
     with open(args.output, "w") as f:
-        yaml.dump(compose, f, default_flow_style=False, sort_keys=False, Dumper=yaml.SafeDumper)
+        yaml.dump(
+            compose,
+            f,
+            default_flow_style=False,
+            sort_keys=False,
+            Dumper=yaml.SafeDumper,
+        )
 
     print(f"Generated {args.output} with:")
     print(f"  filter_q5_fmt:    {args.filter_fmt}")
