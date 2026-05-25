@@ -13,6 +13,7 @@ INPUT_ROUTING_KEYS = (
     else None
 )
 OUTPUT_EXCHANGE = os.environ["OUTPUT_EXCHANGE"]
+OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
 AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
 
 
@@ -26,7 +27,7 @@ class Avg:
             MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
         )
         self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, OUTPUT_EXCHANGE, []
+            MOM_HOST, OUTPUT_EXCHANGE, OUTPUT_ROUTING_KEYS
         )
 
     def _parse_transaction(self, fields):
@@ -48,7 +49,9 @@ class Avg:
         self.output_exchange.send(message_protocol.internal.serialize([client_id]))
 
     def _on_eof(self, client_id, counter):
-        logging.info(f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
+        )
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
             if counter > 1:
