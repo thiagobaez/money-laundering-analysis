@@ -31,9 +31,6 @@ class SplitDate:
             MOM_HOST, SECOND_PERIOD_QUEUE
         )
 
-    def _parse_transaction(self, fields):
-        return transaction_item.TransactionItem(*fields)
-
     def _is_eof(self, fields):
         return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
 
@@ -50,7 +47,9 @@ class SplitDate:
 
     def _on_eof(self, client_id, counter):
         eof = message_protocol.internal.serialize([client_id])
-        logging.info(f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
+        )
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
             if counter > 1:
@@ -77,14 +76,21 @@ class SplitDate:
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
-
-            tx = self._parse_transaction(fields[1])
+            tx_fields = fields[1]
+            tx = transaction_item.TransactionItem(*tx_fields)
 
             if tx.is_in_date_range(FIRST_PERIOD_GE, FIRST_PERIOD_LE):
-                key = self._get_avg_routing_key(tx._payment_format)
+                key = self._get_avg_routing_key(tx.get_payment_format())
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] first_period tx date={tx.get_date_iso()} fmt={tx.get_payment_format()} key={key}"
+                )
                 self.first_period_exchange.send(message, routing_key=key)
             elif tx.is_in_date_range(SECOND_PERIOD_GE, SECOND_PERIOD_LE):
                 self.second_period_queue.send(message)
+            else:
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] discarded tx date={tx.get_date_iso()}"
+                )
 
             ack()
         except Exception as e:
@@ -107,7 +113,7 @@ class SplitDate:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = SplitDate()
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
