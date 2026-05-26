@@ -9,8 +9,7 @@ from common import middleware, message_protocol, transaction_item
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 SECOND_PERIOD_QUEUE = os.environ["SECOND_PERIOD_QUEUE"]
-AVG_EXCHANGE = os.environ["AVG_EXCHANGE"]
-AVG_ROUTING_KEY = os.environ["AVG_ROUTING_KEY"]
+AVG_QUEUE = os.environ["AVG_QUEUE"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "1"))
@@ -35,8 +34,8 @@ class AvgJoiner:
         self.second_period_consumer = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, SECOND_PERIOD_QUEUE
         )
-        self.avg_consumer = middleware.MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, AVG_EXCHANGE, [AVG_ROUTING_KEY]
+        self.avg_consumer = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, AVG_QUEUE
         )
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE

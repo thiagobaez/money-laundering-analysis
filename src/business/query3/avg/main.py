@@ -7,8 +7,7 @@ from common import middleware, message_protocol, transaction_item
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
-OUTPUT_EXCHANGE = os.environ["OUTPUT_EXCHANGE"]
-OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
+OUTPUT_QUEUES = os.environ["OUTPUT_QUEUES"].split(",")
 
 
 class Avg:
@@ -20,9 +19,10 @@ class Avg:
             MOM_HOST, INPUT_QUEUE
         )
 
-        self.output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, OUTPUT_EXCHANGE, OUTPUT_ROUTING_KEYS
-        )
+        self.output_queues = [
+            middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
+            for q in OUTPUT_QUEUES
+        ]
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -40,11 +40,11 @@ class Avg:
             batch.append([payment_format, avg])
 
         if batch:
-            self.output_exchange.send(
-                message_protocol.internal.serialize([client_id, batch])
-            )
+            for q in self.output_queues:
+                q.send(message_protocol.internal.serialize([client_id, batch]))
 
-        self.output_exchange.send(message_protocol.internal.serialize([client_id]))
+        for q in self.output_queues:
+            q.send(message_protocol.internal.serialize([client_id]))
 
     def _on_message(self, message, ack, nack):
         logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
