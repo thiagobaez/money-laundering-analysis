@@ -71,7 +71,7 @@ class TransactionItem:
         )
 
     def is_sent_amount_below(self, max_amount: float) -> bool:
-        return self._amount_received < max_amount
+        return self._amount_paid < max_amount
 
     def is_in_date_range(self, ge_date: str | None, le_date: str | None) -> bool:
         date_str = self._timestamp.date().isoformat()
@@ -100,30 +100,30 @@ class TransactionItem:
             raise ValueError(f"Unknown currency: {currency_name}")
         return code
 
-    def get_receiving_currency_iso(self) -> str:
-        return self._currency_to_iso(self._receiving_currency)
+    def get_payment_currency_iso(self) -> str:
+        return self._currency_to_iso(self._payment_currency)
 
     def get_date_iso(self) -> str:
         return self._timestamp.date().isoformat()
 
-    def get_amount_received_in_usd(self, rate: float) -> float:
-        return self._amount_received / rate
+    def get_amount_paid_in_usd(self, rate: float) -> float:
+        return self._amount_paid / rate
 
-    def get_amount_received(self) -> float:
-        return self._amount_received
+    def get_amount_paid(self) -> float:
+        return self._amount_paid
 
     def convert_to_usd(self, rate: float) -> None:
-        amount_usd = self.get_amount_received_in_usd(rate)
-        self._amount_received = amount_usd
+        amount_usd = self.get_amount_paid_in_usd(rate)
+        self._amount_paid = amount_usd
         self._receiving_currency = "US Dollar"
         self._amount_paid = amount_usd
         self._payment_currency = "US Dollar"
 
     def is_usd(self) -> bool:
-        return self._receiving_currency == "US Dollar"
+        return self._payment_currency == "US Dollar"
 
     def is_bitcoin(self) -> bool:
-        return self._receiving_currency == "Bitcoin"
+        return self._payment_currency == "Bitcoin"
 
     def to_fields(self) -> list[str]:
         return [

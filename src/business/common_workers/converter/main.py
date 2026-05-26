@@ -67,7 +67,7 @@ class Converter:
                 rate = BTC_USD_RATE
             else:
                 rate = self._get_rate(
-                    tx.get_receiving_currency_iso(),
+                    tx.get_payment_currency_iso(),
                     tx.get_date_iso(),
                 )
             tx.convert_to_usd(rate)

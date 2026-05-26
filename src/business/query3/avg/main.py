@@ -67,7 +67,7 @@ class Avg:
                 if fmt not in client_data:
                     client_data[fmt] = [0.0, 0]
 
-                client_data[fmt][0] += tx.get_amount_received()
+                client_data[fmt][0] += tx.get_amount_paid()
                 client_data[fmt][1] += 1
 
             ack()
