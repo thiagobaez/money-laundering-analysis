@@ -20,8 +20,6 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             raise RuntimeError(f"No se pudo conectar: {e}")
 
     def start_consuming(self, on_message_callback):
-        self.channel.basic_qos(prefetch_count=1)
-
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
@@ -81,7 +79,6 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
             self.channel.queue_bind(
                 exchange=self.exchange_name, queue=self.queue_name, routing_key=key
             )
-        self.channel.basic_qos(prefetch_count=1)
 
         def on_message(channel, method, properties, body):
             def ack():
