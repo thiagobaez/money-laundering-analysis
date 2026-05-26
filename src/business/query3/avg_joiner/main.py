@@ -215,16 +215,12 @@ class AvgJoiner:
                         self.eof_seen.discard(client_id)
                         self._try_send_eof(client_id)
                 else:
-                    if counter > 1:
-                        self.second_period_consumer.send(
-                            message_protocol.internal.serialize(
-                                [client_id, "EOF", counter]
-                            )
+                    self.second_period_consumer.send(
+                        message_protocol.internal.serialize(
+                            [client_id, "EOF", counter]
                         )
-                    else:
-                        self.second_period_eof.add(client_id)
-                        self.eof_seen.discard(client_id)
-                        self._try_send_eof(client_id)
+                    )
+                    
                 ack()
                 return
 
