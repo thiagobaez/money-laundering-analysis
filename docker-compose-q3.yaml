@@ -99,7 +99,7 @@ services:
     - AVG_EXCHANGE=avg_exchange
     - AVG_ROUTING_KEY=avg_joiner_0
     - OUTPUT_QUEUE=results_queue
-    - AVG_JOINER_AMOUNT=4
+    - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_0
     - BATCH_SIZE=1000
@@ -119,7 +119,7 @@ services:
     - AVG_EXCHANGE=avg_exchange
     - AVG_ROUTING_KEY=avg_joiner_1
     - OUTPUT_QUEUE=results_queue
-    - AVG_JOINER_AMOUNT=4
+    - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_1
     - BATCH_SIZE=1000
@@ -139,7 +139,7 @@ services:
     - AVG_EXCHANGE=avg_exchange
     - AVG_ROUTING_KEY=avg_joiner_2
     - OUTPUT_QUEUE=results_queue
-    - AVG_JOINER_AMOUNT=4
+    - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_2
     - BATCH_SIZE=1000
@@ -159,9 +159,29 @@ services:
     - AVG_EXCHANGE=avg_exchange
     - AVG_ROUTING_KEY=avg_joiner_3
     - OUTPUT_QUEUE=results_queue
-    - AVG_JOINER_AMOUNT=4
+    - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_3
+    - BATCH_SIZE=1000
+  avg_joiner_4:
+    build:
+      context: ./src/
+      dockerfile: business/query3/avg_joiner/Dockerfile
+    container_name: avg_joiner_4
+    depends_on:
+      rabbitmq: *id001
+    volumes:
+    - ./src/business/query3/spill_to_disk:/data
+    environment:
+    - QUERY_NUMBER=3
+    - MOM_HOST=rabbitmq
+    - SECOND_PERIOD_QUEUE=second_period_queue
+    - AVG_EXCHANGE=avg_exchange
+    - AVG_ROUTING_KEY=avg_joiner_4
+    - OUTPUT_QUEUE=results_queue
+    - AVG_JOINER_AMOUNT=5
+    - AVG_AMOUNT=2
+    - DATA_DIR=/data/joiner_4
     - BATCH_SIZE=1000
   avg_0:
     build:
@@ -178,12 +198,14 @@ services:
         condition: service_started
       avg_joiner_3: &id005
         condition: service_started
+      avg_joiner_4: &id006
+        condition: service_started
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_0
     - OUTPUT_EXCHANGE=avg_exchange
-    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3
+    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
   avg_1:
     build:
@@ -196,12 +218,13 @@ services:
       avg_joiner_1: *id003
       avg_joiner_2: *id004
       avg_joiner_3: *id005
+      avg_joiner_4: *id006
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_1
     - OUTPUT_EXCHANGE=avg_exchange
-    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3
+    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
   split_date_0:
     build:
@@ -210,15 +233,15 @@ services:
     container_name: split_date_0
     depends_on:
       rabbitmq: *id001
-      filter_usd_0: &id006
+      filter_usd_0: &id007
         condition: service_started
-      filter_usd_1: &id007
+      filter_usd_1: &id008
         condition: service_started
-      filter_usd_2: &id008
+      filter_usd_2: &id009
         condition: service_started
-      avg_0: &id009
+      avg_0: &id010
         condition: service_started
-      avg_1: &id010
+      avg_1: &id011
         condition: service_started
     environment:
     - QUERY_NUMBER=3
@@ -239,11 +262,11 @@ services:
     container_name: split_date_1
     depends_on:
       rabbitmq: *id001
-      filter_usd_0: *id006
-      filter_usd_1: *id007
-      filter_usd_2: *id008
-      avg_0: *id009
-      avg_1: *id010
+      filter_usd_0: *id007
+      filter_usd_1: *id008
+      filter_usd_2: *id009
+      avg_0: *id010
+      avg_1: *id011
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -263,11 +286,11 @@ services:
     container_name: split_date_2
     depends_on:
       rabbitmq: *id001
-      filter_usd_0: *id006
-      filter_usd_1: *id007
-      filter_usd_2: *id008
-      avg_0: *id009
-      avg_1: *id010
+      filter_usd_0: *id007
+      filter_usd_1: *id008
+      filter_usd_2: *id009
+      avg_0: *id010
+      avg_1: *id011
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq

@@ -30,7 +30,7 @@ def generate_compose(
             "SERVER_PORT=5678",
             f"INPUT_FILE=/datasets/{input_file}",
             "OUTPUT_FILE=/output/client0/output.csv",
-            f"BATCH_SIZE={batch_size}"
+            f"BATCH_SIZE={batch_size}",
         ],
         "volumes": [
             "./datasets:/datasets",
