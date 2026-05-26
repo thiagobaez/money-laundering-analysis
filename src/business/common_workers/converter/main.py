@@ -8,7 +8,13 @@ from common import middleware, message_protocol, transaction_item
 
 MOM_HOST = os.environ["MOM_HOST"]
 FRANKFURTER_BASE = os.environ.get("FRANKFURTER_BASE", "https://api.frankfurter.dev/v2")
-BTC_USD_RATE = float(os.environ.get("BTC_USD_RATE", "20000.0"))
+BTC_USD_RATES_BY_DATE = {
+    "2022-09-01": 19793.1,
+    "2022-09-02": 199999.0,
+    "2022-09-03": 19831.4,
+    "2022-09-04": 19952.7,
+    "2022-09-05": 20126.1,
+}
 CONVERTER_AMOUNT = int(os.environ.get("CONVERTER_AMOUNT", "1"))
 
 INPUT_QUEUE = os.environ.get("INPUT_QUEUE")
@@ -64,7 +70,7 @@ class Converter:
     def _to_usd_fields(self, tx: transaction_item.TransactionItem) -> list:
         if not tx.is_usd():
             if tx.is_bitcoin():
-                rate = BTC_USD_RATE
+                rate = BTC_USD_RATES_BY_DATE[tx.get_date_iso()]
             else:
                 rate = self._get_rate(
                     tx.get_payment_currency_iso(),
