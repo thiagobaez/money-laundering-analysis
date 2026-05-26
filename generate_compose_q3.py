@@ -144,7 +144,7 @@ def generate_compose_q3(
                 "FIRST_PERIOD_GE=2022-09-01",
                 "FIRST_PERIOD_LE=2022-09-05",
                 "SECOND_PERIOD_GE=2022-09-06",
-                "SECOND_PERIOD_LE=2022-09-15",
+                "SECOND_PERIOD_LE=2022-09-14",
                 f"SPLIT_AMOUNT={n_split_date}",
                 f"BATCH_SIZE={batch_size}",
             ],
