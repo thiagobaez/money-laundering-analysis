@@ -8,16 +8,27 @@ QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
 
 INPUT_QUEUE = os.environ.get("INPUT_QUEUE")
-OUTPUT_QUEUE = os.environ.get("OUTPUT_QUEUE")
+OUTPUT_QUEUES = (
+    os.environ.get("OUTPUT_QUEUES", "").split(",")
+    if os.environ.get("OUTPUT_QUEUES")
+    else None
+)
 
 INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
-INPUT_ROUTING_KEYS = os.environ.get("INPUT_ROUTING_KEYS", "").split(",") if os.environ.get("INPUT_ROUTING_KEYS") else None
+INPUT_ROUTING_KEYS = (
+    os.environ.get("INPUT_ROUTING_KEYS", "").split(",")
+    if os.environ.get("INPUT_ROUTING_KEYS")
+    else None
+)
 
 OUTPUT_EXCHANGE_NAME = os.environ.get("OUTPUT_EXCHANGE_NAME")
-OUTPUT_ROUTING_KEYS = os.environ.get("OUTPUT_ROUTING_KEYS", "").split(",") if os.environ.get("OUTPUT_ROUTING_KEYS") else None
+OUTPUT_ROUTING_KEYS = (
+    os.environ.get("OUTPUT_ROUTING_KEYS", "").split(",")
+    if os.environ.get("OUTPUT_ROUTING_KEYS")
+    else None
+)
 
 FILTER_AMOUNT = int(os.environ.get("FILTER_AMOUNT", "1"))
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
 
 _max_amount_env = os.environ.get("MAX_AMOUNT")
 MAX_AMOUNT = float(_max_amount_env) if _max_amount_env is not None else None
@@ -27,25 +38,40 @@ _pay_fmts_env = os.environ.get("PAY_FMTS")
 PAY_FMTS = set(_pay_fmts_env.split(",")) if _pay_fmts_env is not None else None
 USD_ONLY = bool(os.environ.get("USD_ONLY") == "True")
 ADD_QUERY_ID = bool(os.environ.get("ADD_QUERY_ID") == "True")
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class Filter:
     def __init__(self):
         self.closed = False
-        self.eof_received_by_client = []
-        self._batches = {}  # client_id -> list of rows
+        self.eof_seen: set[str] = set()
+        self.batches: dict[str, list] = {}
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
 
-        if(INPUT_EXCHANGE_NAME is None or INPUT_ROUTING_KEYS is None):
-            self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
+        if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
+            self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+                MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+            )
         else:
-            self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
+            self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+                MOM_HOST, INPUT_QUEUE
+            )
 
-        if(OUTPUT_EXCHANGE_NAME is None or OUTPUT_ROUTING_KEYS is None):
-            self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        if OUTPUT_QUEUES:
+            self.output_queues = [
+                middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
+                for q in OUTPUT_QUEUES
+            ]
+        elif OUTPUT_EXCHANGE_NAME and OUTPUT_ROUTING_KEYS:
+            self.output_queues = [
+                middleware.MessageMiddlewareExchangeRabbitMQ(
+                    MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS
+                )
+            ]
         else:
-            self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
-
+            raise ValueError(
+                "Must define OUTPUT_QUEUES or OUTPUT_EXCHANGE_NAME+OUTPUT_ROUTING_KEYS"
+            )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -61,34 +87,53 @@ class Filter:
     def _get_eof_counter(self, fields):
         return FILTER_AMOUNT if len(fields) == 1 else int(fields[2])
 
+    def _passes(self, tx) -> bool:
+        return (
+            (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
+            and (
+                (GE_DATE is None and LE_DATE is None)
+                or tx.is_in_date_range(GE_DATE, LE_DATE)
+            )
+            and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
+            and (not USD_ONLY or tx.is_usd())
+        )
+
+    def _send_output(self, message):
+        for q in self.output_queues:
+            q.send(message)
+
     def _flush_batch(self, client_id):
-        rows = self._batches.pop(client_id, [])
-        if not rows:
+        batch = self.batches.pop(client_id, [])
+
+        if not batch:
             return
+
         if ADD_QUERY_ID:
-            self.output_queue.send(
-                message_protocol.internal.serialize([client_id, QUERY_NUMBER] + rows)
+            self._send_output(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
             )
         else:
-            self.output_queue.send(
-                message_protocol.internal.serialize([client_id] + rows)
-            )
+            self._send_output(message_protocol.internal.serialize([client_id, batch]))
 
     def _on_eof(self, client_id, counter):
-        self._flush_batch(client_id)
-        if client_id not in self.eof_received_by_client:
-            self.eof_received_by_client.append(client_id)
+        if client_id not in self.eof_seen:
+            self.eof_seen.add(client_id)
             logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}")
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
         else:
-            self.input_queue.send(
-                message_protocol.internal.serialize([client_id, "EOF", counter])
-            )
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter])
+                )
+            else:
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -99,26 +144,19 @@ class Filter:
             client_id = fields[0]
 
             if self._is_eof(fields):
+                self._flush_batch(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
 
-            batch = self._batches.setdefault(client_id, [])
-            for row in fields[1:]:
-                tx = self._parse_transaction(row)
+            tx_list = [self._parse_transaction(tx_fields) for tx_fields in fields[1]]
 
-                passes = (
-                    (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
-                    and ((GE_DATE is None and LE_DATE is None) or tx.is_in_date_range(GE_DATE, LE_DATE))
-                    and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
-                    and (not USD_ONLY or tx.is_usd())
-                )
+            for tx in tx_list:
+                if self._passes(tx):
+                    self.batches.setdefault(client_id, []).append(tx.to_fields())
 
-                if passes:
-                    batch.append(row)
-                    if len(batch) >= BATCH_SIZE:
+                    if len(self.batches[client_id]) >= BATCH_SIZE:
                         self._flush_batch(client_id)
-                        batch = self._batches.setdefault(client_id, [])
 
             ack()
         except Exception as e:
@@ -126,14 +164,16 @@ class Filter:
             nack()
 
     def run(self):
+        logging.info(f"[QUERY {QUERY_NUMBER}] Starting filter worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
         try:
             self.closed = True
             self.input_queue.stop_consuming()
-            self.output_queue.close()
             self.input_queue.close()
+            for q in self.output_queues:
+                q.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 

@@ -83,10 +83,10 @@ class DtDetect:
                 ack()
                 return
 
-            # fields = [client_id, query_number, row1, row2, ...]
+            # fields = [client_id, query_number, batch]
             # each row = [timestamp, from_bank, from_account, to_bank, to_account, ...]
             log = self._get_log(client_id)
-            for row in fields[2:]:
+            for row in fields[2]:
                 from_account = row[2]
                 to_account = row[4]
                 log.write(f"{to_account}\t{from_account}\n".encode())

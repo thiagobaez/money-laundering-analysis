@@ -73,13 +73,16 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
 
     def start_consuming(self, on_message_callback):
         self.queue_name = "_".join(sorted(self.routing_keys))
-        self._declare_lazy_queue(self.queue_name)
+        self.channel.queue_declare(
+            queue=self.queue_name, durable=True,
+            arguments={"x-queue-mode": "lazy"},
+        )
         for key in self.routing_keys:
             self.channel.queue_bind(
                 exchange=self.exchange_name, queue=self.queue_name, routing_key=key
             )
-
         self.channel.basic_qos(prefetch_count=10)
+
 
         def on_message(channel, method, properties, body):
             def ack():
@@ -97,12 +100,6 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
 
     def stop_consuming(self):
         self.channel.stop_consuming()
-
-    def _declare_lazy_queue(self, queue_name):
-        self.channel.queue_declare(
-            queue=queue_name, durable=True,
-            arguments={"x-queue-mode": "lazy"},
-        )
 
     def send(self, message, routing_key=None):
         keys = [routing_key] if routing_key else self.routing_keys

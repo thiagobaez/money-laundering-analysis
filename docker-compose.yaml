@@ -12,8 +12,9 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
+    - INPUT_FILE=/datasets/HI-Small_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
+    - BATCH_SIZE=1000
     volumes:
     - ./datasets:/datasets
     - ./output:/output
@@ -35,8 +36,6 @@ services:
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - BATCH_SIZE=1000
-    - NUM_RESPONSE_WORKERS=1
 
   filter_usd_1:
     build:
@@ -50,15 +49,13 @@ services:
       - q4_filter_date_1
       - q4_filter_date_2
       - q4_filter_date_3
-      - q5_filter
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
     - MOM_HOST=rabbitmq
-    - OUTPUT_EXCHANGE_NAME=filter_usd_exchange
-    - OUTPUT_ROUTING_KEYS=q1_filter_amount,q4_filter_date
+    - OUTPUT_QUEUES=q1_filter_amount,q4_filter_date
     - USD_ONLY=True
     - BATCH_SIZE=1000
 
@@ -74,15 +71,13 @@ services:
       - q4_filter_date_1
       - q4_filter_date_2
       - q4_filter_date_3
-      - q5_filter
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
     - MOM_HOST=rabbitmq
-    - OUTPUT_EXCHANGE_NAME=filter_usd_exchange
-    - OUTPUT_ROUTING_KEYS=q1_filter_amount,q4_filter_date
+    - OUTPUT_QUEUES=q1_filter_amount,q4_filter_date
     - USD_ONLY=True
     - BATCH_SIZE=1000
 
@@ -98,15 +93,13 @@ services:
       - q4_filter_date_1
       - q4_filter_date_2
       - q4_filter_date_3
-      - q5_filter
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
     - MOM_HOST=rabbitmq
-    - OUTPUT_EXCHANGE_NAME=filter_usd_exchange
-    - OUTPUT_ROUTING_KEYS=q1_filter_amount,q4_filter_date
+    - OUTPUT_QUEUES=q1_filter_amount,q4_filter_date
     - USD_ONLY=True
     - BATCH_SIZE=1000
 
@@ -121,9 +114,8 @@ services:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q1_filter_amount
-    - OUTPUT_QUEUE=results_queue
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=1000
@@ -139,9 +131,8 @@ services:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q1_filter_amount
-    - OUTPUT_QUEUE=results_queue
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=1000
@@ -157,9 +148,8 @@ services:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
     - MOM_HOST=rabbitmq
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q1_filter_amount
-    - OUTPUT_QUEUE=results_queue
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=1000
@@ -174,15 +164,13 @@ services:
       - q4_split_2
       - q4_split_3
     environment:
-    - QUERY_NUMBER=4
     - ADD_QUERY_ID=True
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q4_filter_date
-    - OUTPUT_QUEUE=tx_usd_date
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
     - BATCH_SIZE=1000
 
@@ -201,9 +189,8 @@ services:
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q4_filter_date
-    - OUTPUT_QUEUE=tx_usd_date
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
     - BATCH_SIZE=1000
 
@@ -222,9 +209,8 @@ services:
     - QUERY_NUMBER=4
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
-    - INPUT_EXCHANGE_NAME=filter_usd_exchange
-    - INPUT_ROUTING_KEYS=q4_filter_date
-    - OUTPUT_QUEUE=tx_usd_date
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
     - BATCH_SIZE=1000
 
@@ -467,13 +453,12 @@ services:
     depends_on:
       - gateway
     environment:
-    - ID=1
     - QUERY_NUMBER=5
     - ADD_QUERY_ID=True
     - MOM_HOST=rabbitmq
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=q5_filter
-    - OUTPUT_QUEUE=results_queue
+    - OUTPUT_QUEUES=results_queue
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH

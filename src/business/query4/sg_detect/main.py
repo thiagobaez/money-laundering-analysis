@@ -115,6 +115,7 @@ class SgDetect:
             with open(os.path.join(dest_dir, dest_filename)) as f:
                 dest_data[dest_account] = set(line.strip() for line in f if line.strip())
 
+        results = []
         for origin_filename in os.listdir(origins_dir):
             origin_account = origin_filename[:-4]
             with open(os.path.join(origins_dir, origin_filename)) as f:
@@ -123,9 +124,12 @@ class SgDetect:
             for dest_account, origins_of_dest in dest_data.items():
                 common = destinations_of_origin & origins_of_dest
                 if len(common) >= MIN_COMMON:
-                    self.output_queue.send(message_protocol.internal.serialize(
-                        [client_id, QUERY_NUMBER, origin_account, dest_account] + list(common)
-                    ))
+                    results.append([origin_account, dest_account] + sorted(list(common)))
+
+        if results:
+            self.output_queue.send(message_protocol.internal.serialize(
+                [client_id, QUERY_NUMBER, results]
+            ))
 
     def run(self):
 

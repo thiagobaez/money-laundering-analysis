@@ -1,5 +1,3 @@
-import csv
-import io
 import logging
 import socket
 import os
@@ -11,52 +9,64 @@ from common.middleware import MessageMiddlewareExchangeRabbitMQ
 from common.message_protocol import internal, external
 
 _QUERY_RESULT_TYPES = {
-    1: external.MsgType.RESULT_QUERY1,
-    3: external.MsgType.RESULT_QUERY3,
-    4: external.MsgType.RESULT_QUERY4,
-    5: external.MsgType.RESULT_QUERY5,
+    1: external.MsgType.RESULT_BATCH_QUERY1,
+    3: external.MsgType.RESULT_BATCH_QUERY3,
+    4: external.MsgType.RESULT_BATCH_QUERY4,
+    5: external.MsgType.RESULT_BATCH_QUERY5,
 }
 
 SERVER_HOST = os.environ["SERVER_HOST"]
 SERVER_PORT = int(os.environ["SERVER_PORT"])
 MOM_HOST = os.environ["MOM_HOST"]
-INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
-INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
+INPUT_QUEUE_NAME = os.environ.get("INPUT_QUEUE")
+INPUT_ROUTING_KEYS = (
+    os.environ.get("INPUT_ROUTING_KEYS", "").split(",")
+    if os.environ.get("INPUT_ROUTING_KEYS")
+    else None
+)
+INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
-BATCH_SIZE = int(os.environ["BATCH_SIZE"])
-NUM_RESPONSE_WORKERS = int(os.environ.get("NUM_RESPONSE_WORKERS", "3"))
+
 
 def handle_client_request(client_socket, msg_handler):
-    input_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
-    batch = []
+    outputs = []
+    if INPUT_QUEUE_NAME:
+        outputs.append(MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE_NAME))
+    if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
+        outputs.append(
+            MessageMiddlewareExchangeRabbitMQ(
+                MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+            )
+        )
     try:
         while True:
             message = external.recv_msg(client_socket)
-
-            if message[0] == external.MsgType.DATA:
-                csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
-                batch.append(csv_fields)
-                if len(batch) >= BATCH_SIZE:
-                    input_queue.send(msg_handler.serialize_tx_batch(batch))
-                    batch = []
-
+            if message[0] == external.MsgType.DATA_BATCH:
+                batch = external.recv_batch(message[1])
+                serialized = internal.serialize([msg_handler.client_id, batch])
+                for output in outputs:
+                    output.send(serialized)
             if message[0] == external.MsgType.EOF:
-                if batch:
-                    input_queue.send(msg_handler.serialize_tx_batch(batch))
-                input_queue.send(msg_handler.serialize_eof())
+                eof = msg_handler.serialize_eof()
+                for output in outputs:
+                    output.send(eof)
+                logging.info(
+                    "All data received for client_id=%s", msg_handler.client_id
+                )
                 return
-
     except socket.error:
         logging.error("The connection with the client was lost")
     except Exception as e:
         logging.error(e)
     finally:
-        input_queue.close()
+        for output in outputs:
+            output.close()
 
 
-def handle_client_response(client_map, eof_counts, eof_lock, num_expected_eofs):
+def handle_client_response(client_map, num_expected_eofs):
     output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+    eof_counts = {}
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -72,24 +82,21 @@ def handle_client_response(client_map, eof_counts, eof_lock, num_expected_eofs):
             handler, client_socket = client_map[client_id]
             result = handler.deserialize_result(message)
             if result is None:
-                with eof_lock:
-                    eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
-                    if eof_counts[client_id] >= num_expected_eofs:
-                        external.send_msg(client_socket, external.MsgType.EOF)
-                        del client_map[client_id]
-                        del eof_counts[client_id]
+                eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+                logging.info(
+                    "EOF %d/%d received for client_id=%s",
+                    eof_counts[client_id],
+                    num_expected_eofs,
+                    client_id,
+                )
+                if eof_counts[client_id] >= num_expected_eofs:
+                    external.send_msg(client_socket, external.MsgType.EOF)
+                    del client_map[client_id]
+                    del eof_counts[client_id]
             else:
-                query_id, *data = result
+                query_id, rows = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
-                if data and isinstance(data[0], list):
-                    for row in data:
-                        external.send_data(
-                            client_socket, ",".join(row).encode("utf-8"), msg_type
-                        )
-                else:
-                    external.send_data(
-                        client_socket, ",".join(data).encode("utf-8"), msg_type
-                    )
+                external.send_batch(client_socket, rows, msg_type)
             ack()
         except socket.error:
             logging.error("The connection with the client was lost")
@@ -117,12 +124,11 @@ def main():
 
     with multiprocessing.Manager() as manager:
         client_map = manager.dict()
-        eof_counts = manager.dict()
-        eof_lock = manager.Lock()
         sigterm_received = manager.Value("c_short", 0)
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            for _ in range(NUM_RESPONSE_WORKERS):
-                processes_pool.apply_async(handle_client_response, (client_map, eof_counts, eof_lock, NUM_EXPECTED_EOFS))
+            processes_pool.apply_async(
+                handle_client_response, (client_map, NUM_EXPECTED_EOFS)
+            )
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 logging.info("Listening to connections")

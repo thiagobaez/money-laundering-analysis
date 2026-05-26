@@ -50,7 +50,7 @@ class Split:
         rows = self._origin_batches.pop((client_id, key), [])
         if rows:
             self.output_queue.send(
-                message_protocol.internal.serialize([client_id, QUERY_NUMBER, rows]),
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER] + rows),
                 key,
             )
 
@@ -58,7 +58,7 @@ class Split:
         rows = self._dest_batches.pop((client_id, key), [])
         if rows:
             self.output_queue.send(
-                message_protocol.internal.serialize([client_id, QUERY_NUMBER, rows]),
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER] + rows),
                 key,
             )
 
@@ -98,8 +98,8 @@ class Split:
                 ack()
                 return
 
-            # fields = [client_id, query_number, batch]
-            for row in fields[2]:
+            # fields = [client_id, query_number, row1, row2, ...]
+            for row in fields[2:]:
                 tx = self._parse_transaction(row)
 
                 origin_key = ORIGIN_ROUTING_KEYS[
