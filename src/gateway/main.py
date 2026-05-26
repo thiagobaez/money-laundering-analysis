@@ -2,7 +2,6 @@ import logging
 import socket
 import os
 import signal
-import time
 import multiprocessing
 from gateway.message_handler import MessageHandler
 from common.middleware import MessageMiddlewareQueueRabbitMQ
@@ -47,17 +46,13 @@ def handle_client_request(client_socket, msg_handler):
             message = external.recv_msg(client_socket)
             if message[0] == external.MsgType.DATA_BATCH:
                 batch = external.recv_batch(message[1])
-                serialized = internal.serialize(
-                    [msg_handler.client_id, batch]
-                )
+                serialized = internal.serialize([msg_handler.client_id, batch])
                 for output in outputs:
                     output.send(serialized)
-                external.send_msg(client_socket, external.MsgType.ACK)
             if message[0] == external.MsgType.EOF:
                 eof = msg_handler.serialize_eof()
                 for output in outputs:
                     output.send(eof)
-                external.send_msg(client_socket, external.MsgType.ACK)
                 logging.info(
                     "All data received for client_id=%s", msg_handler.client_id
                 )
