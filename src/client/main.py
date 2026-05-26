@@ -73,7 +73,7 @@ class Client:
                             tx_path, "w", encoding="utf-8", newline=""
                         )
                         writer = csv.writer(file_handles[msg_type])
-                        if self._header:
+                        if self._header and query_num != 4:
                             writer.writerow(self._header)
 
                     rows = external.recv_batch(payload)
