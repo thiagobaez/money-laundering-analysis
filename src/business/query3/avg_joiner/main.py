@@ -29,6 +29,8 @@ class AvgJoiner:
         self.file_locks: dict[tuple, threading.Lock] = {}
         self.file_locks_lock = threading.Lock()
         self.output_batches: dict[str, list] = {}
+        self.spill_batches: dict[str, dict[str, list]] = {}
+        self.spill_lock = threading.Lock()
 
         self.second_period_consumer = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, SECOND_PERIOD_QUEUE
@@ -53,38 +55,71 @@ class AvgJoiner:
         os.makedirs(client_dir, exist_ok=True)
         return os.path.join(client_dir, f"{payment_format}.csv")
 
-    def _write_tx_to_disk(self, client_id: str, tx):
-        path = self._file_path(client_id, tx.get_payment_format())
-        file_lock = self._get_file_lock(client_id, tx.get_payment_format())
+    def _spill_tx(self, client_id: str, tx):
+        payment_format = tx.get_payment_format()
+
+        with self.spill_lock:
+            self.spill_batches.setdefault(client_id, {}).setdefault(
+                payment_format, []
+            ).append(tx.to_fields())
+
+            should_flush = (
+                len(self.spill_batches[client_id][payment_format]) >= BATCH_SIZE
+            )
+
+        if should_flush:
+            self._flush_spill_batch(client_id, payment_format)
+
+    def _flush_spill_batch(self, client_id: str, payment_format: str):
+        with self.spill_lock:
+            rows = self.spill_batches.get(client_id, {}).get(payment_format, [])
+
+            if not rows:
+                return
+
+            self.spill_batches[client_id][payment_format] = []
+
+        path = self._file_path(client_id, payment_format)
+        file_lock = self._get_file_lock(client_id, payment_format)
+
         with file_lock:
             with open(path, "a", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(tx.to_fields())
+                writer.writerows(rows)
 
     def _send_output(self, message):
         with self.output_lock:
             self.output_queue.send(message)
 
     def _flush_output_batch(self, client_id: str):
-        batch = self.output_batches.pop(client_id, [])
+        with self.output_lock:
+            batch = self.output_batches.pop(client_id, [])
 
-        if batch:
-            self._send_output(
-                message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, batch]
-                ),
-            )
+            if batch:
+                self.output_queue.send(
+                    message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER, batch]
+                    )
+                )
 
     def _append_output_rows(self, client_id: str, rows: list):
         if not rows:
             return
 
-        self.output_batches.setdefault(client_id, []).extend(rows)
+        with self.output_lock:
+            self.output_batches.setdefault(client_id, []).extend(rows)
 
-        if len(self.output_batches[client_id]) >= BATCH_SIZE:
-            self._flush_output_batch(client_id)
+            if len(self.output_batches[client_id]) >= BATCH_SIZE:
+                batch = self.output_batches.pop(client_id, [])
+
+                self.output_queue.send(
+                    message_protocol.internal.serialize(
+                        [client_id, QUERY_NUMBER, batch]
+                    )
+                )
 
     def _flush_to_output(self, client_id: str, payment_format: str, avg: float):
+        self._flush_spill_batch(client_id, payment_format)
         path = self._file_path(client_id, payment_format)
         file_lock = self._get_file_lock(client_id, payment_format)
 
@@ -118,18 +153,42 @@ class AvgJoiner:
                     os.remove(path)
                 except FileNotFoundError:
                     pass
+
+        with self.spill_lock:
+            self.spill_batches.pop(client_id, None)
+
         with self.file_locks_lock:
             keys_to_remove = [k for k in self.file_locks if k[0] == client_id]
             for k in keys_to_remove:
                 del self.file_locks[k]
 
+    def _flush_all_spill_to_output(self, client_id: str):
+        with self.avg_results_lock:
+            client_avgs = dict(self.avg_results.get(client_id, {}))
+
+        with self.spill_lock:
+            pending_formats = set(self.spill_batches.get(client_id, {}).keys())
+
+        for payment_format in pending_formats:
+            if payment_format in client_avgs:
+                self._flush_to_output(
+                    client_id, payment_format, client_avgs[payment_format]
+                )
+
+        with self.avg_results_lock:
+            client_avgs = dict(self.avg_results.get(client_id, {}))
+
+        for payment_format, avg in client_avgs.items():
+            self._flush_to_output(client_id, payment_format, avg)
+
     def _try_send_eof(self, client_id: str):
         if client_id in self.second_period_eof and client_id in self.avg_eof:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] both EOFs received, sending EOF downstream client={client_id}"
-            )
+            self._flush_all_spill_to_output(client_id)
             self._flush_output_batch(client_id)
             self._send_output(message_protocol.internal.serialize([client_id]))
+            with self.avg_results_lock:
+                self.avg_results.pop(client_id, None)
+            self._cleanup_client(client_id)
             self.second_period_eof.discard(client_id)
             self.avg_eof.discard(client_id)
 
@@ -184,7 +243,7 @@ class AvgJoiner:
                     if tx.is_sent_amount_below(avg / 100):
                         output_batch.append(tx.to_fields())
                 else:
-                    self._write_tx_to_disk(client_id, tx)
+                    self._spill_tx(client_id, tx)
 
             self._append_output_rows(client_id, output_batch)
 
@@ -210,9 +269,6 @@ class AvgJoiner:
                     ack()
                     return
                 del self.avg_eof_counts[client_id]
-                with self.avg_results_lock:
-                    self.avg_results.pop(client_id, {})
-                self._cleanup_client(client_id)
                 self.avg_eof.add(client_id)
                 self._try_send_eof(client_id)
                 ack()
