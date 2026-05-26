@@ -50,10 +50,10 @@ class TransactionItem:
         self._is_laundering = int(is_laundering)
 
     def __eq__(self, other):
-        return self._amount_received == other._amount_received
+        return self._amount_paid == other._amount_paid
 
     def __lt__(self, other):
-        return self._amount_received < other._amount_received
+        return self._amount_paid < other._amount_paid
 
     def __str__(self):
         return (
@@ -74,7 +74,7 @@ class TransactionItem:
         return self._amount_paid < max_amount
 
     def is_in_date_range(self, ge_date: str | None, le_date: str | None) -> bool:
-        date_str = self._timestamp.date().isoformat()
+        date_str = self.get_date_iso()
         return (ge_date is None or date_str >= ge_date) and (
             le_date is None or date_str <= le_date
         )
@@ -114,8 +114,6 @@ class TransactionItem:
 
     def convert_to_usd(self, rate: float) -> None:
         amount_usd = self.get_amount_paid_in_usd(rate)
-        self._amount_paid = amount_usd
-        self._receiving_currency = "US Dollar"
         self._amount_paid = amount_usd
         self._payment_currency = "US Dollar"
 
