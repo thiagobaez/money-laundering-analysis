@@ -67,7 +67,8 @@ class Converter:
                 rate = BTC_USD_RATE
             else:
                 rate = self._get_rate(
-                    tx.get_receiving_currency_iso(), tx.get_date_iso()
+                    tx.get_receiving_currency_iso(),
+                    tx.get_date_iso(),
                 )
             tx.convert_to_usd(rate)
         return tx.to_fields()
@@ -78,6 +79,9 @@ class Converter:
     def _get_eof_counter(self, fields):
         return CONVERTER_AMOUNT if len(fields) == 1 else int(fields[2])
 
+    def _send_eof(self, client_id):
+        self.output_queue.send(message_protocol.internal.serialize([client_id]))
+
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
@@ -86,13 +90,16 @@ class Converter:
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                self.output_queue.send(message_protocol.internal.serialize([client_id]))
+                self._send_eof(client_id)
                 self.eof_seen.discard(client_id)
         else:
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter])
                 )
+            else:
+                self._send_eof(client_id)
+                self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
         try:
@@ -104,12 +111,15 @@ class Converter:
                 ack()
                 return
 
-            tx_fields = fields[1]
-            tx = transaction_item.TransactionItem(*tx_fields)
-            converted_fields = self._to_usd_fields(tx)
-            self.output_queue.send(
-                message_protocol.internal.serialize([client_id, converted_fields])
-            )
+            rows = fields[1]
+            converted_rows = []
+            for row in rows:
+                tx = transaction_item.TransactionItem(*row)
+                converted_rows.append(self._to_usd_fields(tx))
+            if converted_rows:
+                self.output_queue.send(
+                    message_protocol.internal.serialize([client_id, converted_rows])
+                )
             ack()
         except Exception as e:
             logging.error(f"[CONVERTER] Error processing message: {e}")
