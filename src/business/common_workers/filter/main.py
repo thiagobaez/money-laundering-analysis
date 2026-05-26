@@ -127,41 +127,9 @@ class Filter:
                 self._send_output(message_protocol.internal.serialize([client_id]))
                 self.eof_seen.discard(client_id)
         else:
-            # Re-enqueue always so an unseen worker gets to flush its batch first
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
-
-    def _on_message(self, message, ack, nack):
-        if self.closed:
-            ack()
-            return
-
-        if ADD_QUERY_ID:
-            self._send_output(
-                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
-            )
-        else:
-            self._send_output(message_protocol.internal.serialize([client_id, batch]))
-
-    def _on_eof(self, client_id, counter):
-        if client_id not in self.eof_seen:
-            self.eof_seen.add(client_id)
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
-                )
-            else:
-                self._send_output(message_protocol.internal.serialize([client_id]))
-                self.eof_seen.discard(client_id)
-        else:
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter])
-                )
-            else:
-                self._send_output(message_protocol.internal.serialize([client_id]))
-                self.eof_seen.discard(client_id)
 
     def _on_message(self, message, ack, nack):
         try:
