@@ -27,3 +27,7 @@ rabbitmq-data/
 
 # coverage
 .coverage
+
+# Datasets
+datasets/*.csv.gz
+datasets/*.csv

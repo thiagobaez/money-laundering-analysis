@@ -136,6 +136,34 @@ class Filter:
         if self.closed:
             ack()
             return
+
+        if ADD_QUERY_ID:
+            self._send_output(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
+            )
+        else:
+            self._send_output(message_protocol.internal.serialize([client_id, batch]))
+
+    def _on_eof(self, client_id, counter):
+        if client_id not in self.eof_seen:
+            self.eof_seen.add(client_id)
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
+                )
+            else:
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
+        else:
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter])
+                )
+            else:
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
+
+    def _on_message(self, message, ack, nack):
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
@@ -166,7 +194,6 @@ class Filter:
 
     def close(self):
         try:
-            self.closed = True
             self.input_queue.stop_consuming()
             self.input_queue.close()
             for q in self.output_queues:
@@ -177,8 +204,9 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     worker = Filter()
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

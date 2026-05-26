@@ -109,7 +109,7 @@ class Client:
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     client = Client()
 
     try:

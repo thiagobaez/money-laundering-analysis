@@ -3,6 +3,23 @@ from datetime import datetime
 
 TIMESTAMP_FORMAT = "%Y/%m/%d %H:%M"
 
+_DATASET_NAME_TO_ISO = {
+    "US Dollar": "USD",
+    "Euro": "EUR",
+    "Australian Dollar": "AUD",
+    "Yuan": "CNY",
+    "Rupee": "INR",
+    "Mexican Peso": "MXN",
+    "Yen": "JPY",
+    "UK Pound": "GBP",
+    "Ruble": "RUB",
+    "Canadian Dollar": "CAD",
+    "Swiss Franc": "CHF",
+    "Brazil Real": "BRL",
+    "Saudi Riyal": "SAR",
+    "Shekel": "ILS",
+}
+
 
 @functools.total_ordering
 class TransactionItem:
@@ -48,8 +65,13 @@ class TransactionItem:
         return self._amount_paid < max_amount
 
     def is_in_date_range(self, ge_date: str | None, le_date: str | None) -> bool:
-        date_str = self._timestamp.date().isoformat()
-        return (ge_date is None or date_str >= ge_date) and (le_date is None or date_str <= le_date)
+        date_str = self.get_date_iso()
+        return (ge_date is None or date_str >= ge_date) and (
+            le_date is None or date_str <= le_date
+        )
+
+    def get_payment_format(self) -> str:
+        return self._payment_format
 
     def has_payment_format(self, fmt: str) -> bool:
         return self._payment_format == fmt
@@ -63,11 +85,40 @@ class TransactionItem:
     def get_to_account(self) -> str:
         return self._to_account
 
+    def get_from_account(self) -> str:
+        return self._from_account
+
+    def get_to_account(self) -> str:
+        return self._to_account
+
+    def _currency_to_iso(self, currency_name: str) -> str:
+        code = _DATASET_NAME_TO_ISO.get(currency_name)
+        if code is None:
+            raise ValueError(f"Unknown currency: {currency_name}")
+        return code
+
+    def get_payment_currency_iso(self) -> str:
+        return self._currency_to_iso(self._payment_currency)
+
+    def get_date_iso(self) -> str:
+        return self._timestamp.date().isoformat()
+
+    def get_amount_paid_in_usd(self, rate: float) -> float:
+        return self._amount_paid / rate
+
+    def get_amount_paid(self) -> float:
+        return self._amount_paid
+
+    def convert_to_usd(self, rate: float) -> None:
+        amount_usd = self.get_amount_paid_in_usd(rate)
+        self._amount_paid = amount_usd
+        self._payment_currency = "US Dollar"
+
     def is_usd(self) -> bool:
         return self._payment_currency == "US Dollar"
 
-    def is_between(self, date_from: datetime, date_to: datetime) -> bool:
-        return date_from <= self._timestamp <= date_to
+    def is_bitcoin(self) -> bool:
+        return self._payment_currency == "Bitcoin"
 
     def to_fields(self) -> list[str]:
         return [
