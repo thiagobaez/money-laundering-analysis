@@ -31,9 +31,6 @@ class Client:
 
     def _send_batch(self, batch):
         external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)
-        msg_type, _ = external.recv_msg(self._socket)
-        if msg_type != external.MsgType.ACK:
-            raise ValueError(f"Expected ACK, got {msg_type}")
 
     def _send_file(self, filepath: str):
         with self.open_file(filepath) as csvfile:
@@ -48,10 +45,6 @@ class Client:
             if batch:
                 self._send_batch(batch)
         external.send_eof(self._socket)
-
-        msg_type, _ = external.recv_msg(self._socket)
-        if msg_type != external.MsgType.ACK:
-            raise ValueError(f"Expected ACK after EOF, got {msg_type}")
 
     def _receive_results(self, output_path: str):
         output_dir = os.path.dirname(output_path)
