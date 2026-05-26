@@ -116,7 +116,9 @@ class SplitDate:
             client_id = fields[0]
 
             if self._is_eof(fields):
-                logging.info(f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}")
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}"
+                )
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()
                 return
