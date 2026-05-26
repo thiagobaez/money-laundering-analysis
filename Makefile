@@ -2,7 +2,7 @@
 
 COMPOSE_FILE := $(shell cat .compose 2>/dev/null || echo docker-compose.yaml)
 
-switch:
+switch-query:
 	@printf "Seleccionar query a ejecutar:\n  A) Query 1\n  B) Query 3\n  C) Query 4\n  D) Query 5\n  E) Todas las queries (default)\nIngrese una opción: "; \
 	read choice; \
 	case "$${choice:-E}" in \
