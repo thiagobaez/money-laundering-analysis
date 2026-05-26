@@ -26,7 +26,7 @@ down:
 	sudo rm -rf output
 	sudo rm -rf src/business/query3/spill_to_disk/*
 	docker compose -f $(COMPOSE_FILE) stop -t 5
-	docker compose -f $(COMPOSE_FILE) down -v
+	docker compose -f $(COMPOSE_FILE) down -v --rmi all
 
 logs:
 	docker compose -f $(COMPOSE_FILE) logs
