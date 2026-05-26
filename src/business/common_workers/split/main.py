@@ -42,6 +42,7 @@ class Split:
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
+            logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT] EOF received for client {client_id}")
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
@@ -98,7 +99,7 @@ class Split:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     worker = Split()
     try:
         worker.run()

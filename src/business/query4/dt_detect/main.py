@@ -3,7 +3,7 @@ import shutil
 import logging
 import signal
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -15,9 +15,11 @@ MIN_ORIGINS = int(os.environ["MIN_ORIGINS"])
 
 DATA_DIR = "/data"
 
+
 class DtDetect:
     def __init__(self):
         self.closed = False
+        self._logs = {}  # client_id -> file handle for the single log file
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, [INPUT_ROUTING_KEY])
         self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
@@ -27,25 +29,45 @@ class DtDetect:
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
 
-    def _parse_transaction(self, fields):
-        return transaction_item.TransactionItem(*fields)
-
     def _client_dir(self, client_id):
         return os.path.join(DATA_DIR, str(client_id))
 
+    def _get_log(self, client_id):
+        if client_id not in self._logs:
+            client_dir = self._client_dir(client_id)
+            os.makedirs(client_dir, exist_ok=True)
+            self._logs[client_id] = open(
+                os.path.join(client_dir, "log.bin"), "ab", buffering=65536
+            )
+        return self._logs[client_id]
+
     def _on_eof_message(self, client_id):
+        logging.info(f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}")
+        if client_id in self._logs:
+            self._logs.pop(client_id).close()
+
+        log_path = os.path.join(self._client_dir(client_id), "log.bin")
+        account_map = {}
+        if os.path.exists(log_path):
+            with open(log_path, "r") as f:
+                for line in f:
+                    parts = line.rstrip("\n").split("\t", 1)
+                    if len(parts) == 2:
+                        to_acc, from_acc = parts
+                        if to_acc not in account_map:
+                            account_map[to_acc] = set()
+                        account_map[to_acc].add(from_acc)
+
+        for to_acc, from_accs in account_map.items():
+            if len(from_accs) >= MIN_ORIGINS:
+                msg = message_protocol.internal.serialize(
+                    [client_id, QUERY_NUMBER, to_acc] + list(from_accs))
+                self.output_queue.send(msg)
+
         client_dir = self._client_dir(client_id)
         if os.path.exists(client_dir):
-            for filename in os.listdir(client_dir):
-                destination_account = filename[:-4]
-                filepath = os.path.join(client_dir, filename)
-                with open(filepath) as f:
-                    origins = set(line.strip() for line in f if line.strip())
-                if len(origins) >= MIN_ORIGINS:
-                    message = message_protocol.internal.serialize(
-                        [client_id, QUERY_NUMBER, destination_account] + list(origins))
-                    self.output_queue.send(message)
             shutil.rmtree(client_dir)
+
         self.output_queue.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
 
     def _on_message(self, message, ack, nack):
@@ -61,12 +83,9 @@ class DtDetect:
                 ack()
                 return
 
-            tx = self._parse_transaction(fields[2:])
-
-            client_dir = self._client_dir(client_id)
-            os.makedirs(client_dir, exist_ok=True)
-            with open(os.path.join(client_dir, f"{tx._to_account}.csv"), "a") as f:
-                f.write(tx._from_account + "\n")
+            from_account = fields[4]
+            to_account = fields[6]
+            self._get_log(client_id).write(f"{to_account}\t{from_account}\n".encode())
 
             ack()
         except Exception as e:
@@ -80,6 +99,9 @@ class DtDetect:
         try:
             self.closed = True
             self.input_queue.stop_consuming()
+            for fh in self._logs.values():
+                fh.close()
+            self._logs.clear()
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
@@ -87,7 +109,7 @@ class DtDetect:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     worker = DtDetect()
     try:
         worker.run()

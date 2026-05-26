@@ -54,6 +54,7 @@ class SgDetect:
             if len(fields) == 2:
                 self.origins_eofs += 1
                 if self.origins_eofs >= NUM_OG_WORKERS:
+                    logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All origin EOFs received for client {client_id}")
                     self.origins_queue.stop_consuming()
                 ack()
                 return
@@ -83,6 +84,7 @@ class SgDetect:
             if len(fields) == 2:
                 self.destinations_eofs += 1
                 if self.destinations_eofs >= NUM_DT_WORKERS:
+                    logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All destination EOFs received for client {client_id}")
                     self.destinations_queue.stop_consuming()
                 ack()
                 return
@@ -163,7 +165,7 @@ class SgDetect:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     worker = SgDetect()
     try:
         worker.run()

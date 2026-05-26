@@ -62,6 +62,7 @@ class Filter:
     def _on_eof(self, client_id, counter):
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
+            logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}")
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
@@ -86,24 +87,27 @@ class Filter:
                 ack()
                 return
 
-            tx = self._parse_transaction(fields[1])
+            for row in fields[1:]:
+                tx = self._parse_transaction(row)
 
-            passes = (
-                (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
-                and ((GE_DATE is None and LE_DATE is None) or tx.is_in_date_range(GE_DATE, LE_DATE))
-                and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
-                and (not USD_ONLY or tx.is_usd())
-            )
+                passes = (
+                    (MAX_AMOUNT is None or tx.is_sent_amount_below(MAX_AMOUNT))
+                    and ((GE_DATE is None and LE_DATE is None) or tx.is_in_date_range(GE_DATE, LE_DATE))
+                    and (PAY_FMTS is None or tx.has_any_payment_format(PAY_FMTS))
+                    and (not USD_ONLY or tx.is_usd())
+                )
 
-            if passes:
-                if ADD_QUERY_ID:
-                    self.output_queue.send(
-                        message_protocol.internal.serialize(
-                            [client_id, QUERY_NUMBER] + fields[1]
+                if passes:
+                    if ADD_QUERY_ID:
+                        self.output_queue.send(
+                            message_protocol.internal.serialize(
+                                [client_id, QUERY_NUMBER] + row
+                            )
                         )
-                    )
-                else:
-                    self.output_queue.send(message)
+                    else:
+                        self.output_queue.send(
+                            message_protocol.internal.serialize([client_id, row])
+                        )
 
             ack()
         except Exception as e:
@@ -125,7 +129,7 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     worker = Filter()
     try:
         worker.run()

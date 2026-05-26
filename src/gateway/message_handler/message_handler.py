@@ -9,6 +9,9 @@ class MessageHandler:
     def serialize_tx(self, fields):
         return internal.serialize([self.client_id] + list(fields))
 
+    def serialize_tx_batch(self, rows):
+        return internal.serialize([self.client_id] + rows)
+
     def serialize_eof(self):
         # EOF is [client_id] with no data fields so the receiver can route it
         return internal.serialize([self.client_id])

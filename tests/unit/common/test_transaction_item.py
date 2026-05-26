@@ -8,12 +8,9 @@ BASE = {
     "from_account": "123",
     "to_bank": "Santander",
     "to_account": "456",
-    "amount_received": "100.0",
-    "receiving_currency": "US Dollar",
     "amount_paid": "100.0",
     "payment_currency": "US Dollar",
     "payment_format": "Reinvestment",
-    "is_laundering": "0",
 }
 
 

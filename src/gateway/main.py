@@ -24,18 +24,26 @@ INPUT_ROUTING_KEYS = os.environ["INPUT_ROUTING_KEYS"].split(",")
 INPUT_EXCHANGE_NAME = os.environ["INPUT_EXCHANGE_NAME"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
+BATCH_SIZE = int(os.environ["BATCH_SIZE"])
+NUM_RESPONSE_WORKERS = int(os.environ.get("NUM_RESPONSE_WORKERS", "3"))
 
 def handle_client_request(client_socket, msg_handler):
     input_queue = MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS)
+    batch = []
     try:
         while True:
             message = external.recv_msg(client_socket)
 
             if message[0] == external.MsgType.DATA:
                 csv_fields = next(csv.reader(io.StringIO(message[1].decode("utf-8"))))
-                input_queue.send(msg_handler.serialize_tx([csv_fields]))
+                batch.append(csv_fields)
+                if len(batch) >= BATCH_SIZE:
+                    input_queue.send(msg_handler.serialize_tx_batch(batch))
+                    batch = []
 
             if message[0] == external.MsgType.EOF:
+                if batch:
+                    input_queue.send(msg_handler.serialize_tx_batch(batch))
                 input_queue.send(msg_handler.serialize_eof())
                 return
 
@@ -47,9 +55,8 @@ def handle_client_request(client_socket, msg_handler):
         input_queue.close()
 
 
-def handle_client_response(client_map, num_expected_eofs):
+def handle_client_response(client_map, eof_counts, eof_lock, num_expected_eofs):
     output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
-    eof_counts = {}
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -60,16 +67,17 @@ def handle_client_response(client_map, num_expected_eofs):
                 return
             client_id = deserialized[0]
             if client_id not in client_map:
-                ack()
+                nack()
                 return
             handler, client_socket = client_map[client_id]
             result = handler.deserialize_result(message)
             if result is None:
-                eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
-                if eof_counts[client_id] >= num_expected_eofs:
-                    external.send_msg(client_socket, external.MsgType.EOF)
-                    del client_map[client_id]
-                    del eof_counts[client_id]
+                with eof_lock:
+                    eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+                    if eof_counts[client_id] >= num_expected_eofs:
+                        external.send_msg(client_socket, external.MsgType.EOF)
+                        del client_map[client_id]
+                        del eof_counts[client_id]
             else:
                 query_id, *data = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
@@ -103,9 +111,12 @@ def main():
 
     with multiprocessing.Manager() as manager:
         client_map = manager.dict()
+        eof_counts = manager.dict()
+        eof_lock = manager.Lock()
         sigterm_received = manager.Value("c_short", 0)
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            processes_pool.apply_async(handle_client_response, (client_map, NUM_EXPECTED_EOFS))
+            for _ in range(NUM_RESPONSE_WORKERS):
+                processes_pool.apply_async(handle_client_response, (client_map, eof_counts, eof_lock, NUM_EXPECTED_EOFS))
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 logging.info("Listening to connections")

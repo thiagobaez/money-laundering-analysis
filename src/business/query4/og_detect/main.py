@@ -4,7 +4,7 @@ import logging
 import signal
 import hashlib
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -16,9 +16,11 @@ MIN_DESTINATIONS = int(os.environ["MIN_DESTINATIONS"])
 
 DATA_DIR = "/data"
 
+
 class OgDetect:
     def __init__(self):
         self.closed = False
+        self._logs = {}  # client_id -> file handle for the single log file
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
         self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
@@ -32,26 +34,46 @@ class OgDetect:
         digest = hashlib.md5(account_id.encode()).digest()
         return int.from_bytes(digest[:4], "big") % cant_queues
 
-    def _parse_transaction(self, fields):
-        return transaction_item.TransactionItem(*fields)
-
     def _client_dir(self, client_id):
         return os.path.join(DATA_DIR, str(client_id))
 
+    def _get_log(self, client_id):
+        if client_id not in self._logs:
+            client_dir = self._client_dir(client_id)
+            os.makedirs(client_dir, exist_ok=True)
+            self._logs[client_id] = open(
+                os.path.join(client_dir, "log.bin"), "ab", buffering=65536
+            )
+        return self._logs[client_id]
+
     def _on_eof_message(self, client_id):
+        logging.info(f"[QUERY {QUERY_NUMBER}] [OG_DETECT] EOF received for client {client_id}")
+        if client_id in self._logs:
+            self._logs.pop(client_id).close()
+
+        log_path = os.path.join(self._client_dir(client_id), "log.bin")
+        account_map = {}
+        if os.path.exists(log_path):
+            with open(log_path, "r") as f:
+                for line in f:
+                    parts = line.rstrip("\n").split("\t", 1)
+                    if len(parts) == 2:
+                        from_acc, to_acc = parts
+                        if from_acc not in account_map:
+                            account_map[from_acc] = set()
+                        account_map[from_acc].add(to_acc)
+
+        for from_acc, to_accs in account_map.items():
+            if len(to_accs) >= MIN_DESTINATIONS:
+                msg = message_protocol.internal.serialize(
+                    [client_id, QUERY_NUMBER, from_acc] + list(to_accs))
+                idx = self._get_hash_index_queue(from_acc, len(OUTPUT_ROUTING_KEYS))
+                self.output_queue.send(msg, OUTPUT_ROUTING_KEYS[idx])
+
         client_dir = self._client_dir(client_id)
         if os.path.exists(client_dir):
-            for filename in os.listdir(client_dir):
-                origin_account = filename[:-4]
-                filepath = os.path.join(client_dir, filename)
-                with open(filepath) as f:
-                    destinations = set(line.strip() for line in f if line.strip())
-                if len(destinations) >= MIN_DESTINATIONS:
-                    message = message_protocol.internal.serialize(
-                        [client_id, QUERY_NUMBER, origin_account] + list(destinations))
-                    index_queue = self._get_hash_index_queue(origin_account, len(OUTPUT_ROUTING_KEYS))
-                    self.output_queue.send(message, OUTPUT_ROUTING_KEYS[index_queue])
             shutil.rmtree(client_dir)
+
         eof = message_protocol.internal.serialize([client_id, QUERY_NUMBER])
         for routing_key in OUTPUT_ROUTING_KEYS:
             self.output_queue.send(eof, routing_key)
@@ -69,12 +91,9 @@ class OgDetect:
                 ack()
                 return
 
-            tx = self._parse_transaction(fields[2:])
-
-            client_dir = self._client_dir(client_id)
-            os.makedirs(client_dir, exist_ok=True)
-            with open(os.path.join(client_dir, f"{tx.get_from_account()}.csv"), "a") as f:
-                f.write(tx.get_to_account() + "\n")
+            from_account = fields[4]
+            to_account = fields[6]
+            self._get_log(client_id).write(f"{from_account}\t{to_account}\n".encode())
 
             ack()
         except Exception as e:
@@ -88,6 +107,9 @@ class OgDetect:
         try:
             self.closed = True
             self.input_queue.stop_consuming()
+            for fh in self._logs.values():
+                fh.close()
+            self._logs.clear()
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
@@ -95,7 +117,7 @@ class OgDetect:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     worker = OgDetect()
     try:
         worker.run()

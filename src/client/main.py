@@ -19,12 +19,14 @@ class Client:
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((SERVER_HOST, SERVER_PORT))
 
+    _SKIP_COLS = {5, 6, 10}  # Amount Received, Receiving Currency, Is Laundering
+
     def _send_file(self, filepath: str):
         with open(filepath, newline="\n") as csvfile:
             csv_reader = csv.reader(csvfile, delimiter=",", quotechar='"')
             next(csv_reader)
             for row in csv_reader:
-                line = ",".join(row)
+                line = ",".join(v for i, v in enumerate(row) if i not in self._SKIP_COLS)
                 external.send_data(self._socket, line.encode("utf-8"), external.MsgType.DATA)
 
         external.send_eof(self._socket)
