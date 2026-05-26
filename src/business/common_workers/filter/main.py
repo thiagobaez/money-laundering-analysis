@@ -127,13 +127,10 @@ class Filter:
                 self._send_output(message_protocol.internal.serialize([client_id]))
                 self.eof_seen.discard(client_id)
         else:
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter])
-                )
-            else:
-                self._send_output(message_protocol.internal.serialize([client_id]))
-                self.eof_seen.discard(client_id)
+            # Re-enqueue always so an unseen worker gets to flush its batch first
+            self.input_queue.send(
+                message_protocol.internal.serialize([client_id, "EOF", counter])
+            )
 
     def _on_message(self, message, ack, nack):
         if self.closed:
