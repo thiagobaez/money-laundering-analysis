@@ -2,19 +2,26 @@ import pika
 from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange
 
 
+_CONNECTION_PARAMS = dict(heartbeat=0, blocked_connection_timeout=300)
+
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
     def __init__(self, host, queue_name):
         try:
             self.connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=host)
+                pika.ConnectionParameters(host=host, **_CONNECTION_PARAMS)
             )
             self.channel = self.connection.channel()
-            self.channel.queue_declare(queue=queue_name)
+            self.channel.queue_declare(
+                queue=queue_name, durable=True,
+                arguments={"x-queue-mode": "lazy"},
+            )
             self.queue_name = queue_name
         except pika.exceptions.AMQPConnectionError as e:
             raise RuntimeError(f"No se pudo conectar: {e}")
 
     def start_consuming(self, on_message_callback):
+        self.channel.basic_qos(prefetch_count=1)
+
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
@@ -37,7 +44,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             exchange="",
             routing_key=self.queue_name,
             body=message,
-            properties=pika.BasicProperties(),
+            properties=pika.BasicProperties(delivery_mode=1),
         )
 
     def close(self):
@@ -51,26 +58,31 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
     def __init__(self, host, exchange_name, routing_keys):
         try:
             self.connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=host)
+                pika.ConnectionParameters(host=host, **_CONNECTION_PARAMS)
             )
             self.channel = self.connection.channel()
             self.exchange_name = exchange_name
             self.routing_keys = routing_keys
+            self.queue_name = None
 
             self.channel.exchange_declare(
                 exchange=exchange_name, exchange_type="direct"
             )
-            result = self.channel.queue_declare(queue="", exclusive=True)
-            self.queue_name = result.method.queue
-
-            for key in routing_keys:
-                self.channel.queue_bind(
-                    exchange=exchange_name, queue=self.queue_name, routing_key=key
-                )
         except pika.exceptions.AMQPConnectionError as e:
             raise RuntimeError(f"No se pudo conectar al broker: {e}")
 
     def start_consuming(self, on_message_callback):
+        self.queue_name = "_".join(sorted(self.routing_keys))
+        self.channel.queue_declare(
+            queue=self.queue_name, durable=True,
+            arguments={"x-queue-mode": "lazy"},
+        )
+        for key in self.routing_keys:
+            self.channel.queue_bind(
+                exchange=self.exchange_name, queue=self.queue_name, routing_key=key
+            )
+        self.channel.basic_qos(prefetch_count=1)
+
         def on_message(channel, method, properties, body):
             def ack():
                 channel.basic_ack(method.delivery_tag)
@@ -95,7 +107,7 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
                 exchange=self.exchange_name,
                 routing_key=key,
                 body=message,
-                properties=pika.BasicProperties(),
+                properties=pika.BasicProperties(delivery_mode=1),
             )
 
     def close(self):

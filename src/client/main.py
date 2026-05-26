@@ -23,27 +23,28 @@ class Client:
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((SERVER_HOST, SERVER_PORT))
 
+    _SKIP_COLS = {5, 6, 10}  # Amount Received, Receiving Currency, Is Laundering
+
     @staticmethod
     def open_file(filepath):
         if filepath.endswith(".gz"):
             return gzip.open(filepath, "rt", encoding="utf-8")
         return open(filepath, "r", encoding="utf-8")
 
-    def _send_batch(self, batch):
-        external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)
-
     def _send_file(self, filepath: str):
         with self.open_file(filepath) as csvfile:
             csv_reader = csv.reader(csvfile, delimiter=",", quotechar='"')
-            self._header = next(csv_reader)
+            header = next(csv_reader)
+            self._header = [v for i, v in enumerate(header) if i not in self._SKIP_COLS]
             batch = []
             for row in csv_reader:
-                batch.append(row)
+                filtered = [v for i, v in enumerate(row) if i not in self._SKIP_COLS]
+                batch.append(filtered)
                 if len(batch) >= BATCH_SIZE:
-                    self._send_batch(batch)
+                    external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)
                     batch = []
             if batch:
-                self._send_batch(batch)
+                external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)
         external.send_eof(self._socket)
 
     def _receive_results(self, output_path: str):
@@ -72,7 +73,7 @@ class Client:
                             tx_path, "w", encoding="utf-8", newline=""
                         )
                         writer = csv.writer(file_handles[msg_type])
-                        if self._header:
+                        if self._header and query_num != 4:
                             writer.writerow(self._header)
 
                     rows = external.recv_batch(payload)

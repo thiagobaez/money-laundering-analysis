@@ -30,24 +30,18 @@ class TransactionItem:
         from_account: str,
         to_bank: str,
         to_account: str,
-        amount_received: str,
-        receiving_currency: str,
         amount_paid: str,
         payment_currency: str,
         payment_format: str,
-        is_laundering: str,
     ):
         self._timestamp = datetime.strptime(timestamp, TIMESTAMP_FORMAT)
         self._from_bank = from_bank
         self._from_account = from_account
         self._to_bank = to_bank
         self._to_account = to_account
-        self._amount_received = float(amount_received)
-        self._receiving_currency = receiving_currency
         self._amount_paid = float(amount_paid)
         self._payment_currency = payment_currency
         self._payment_format = payment_format
-        self._is_laundering = int(is_laundering)
 
     def __eq__(self, other):
         return self._amount_paid == other._amount_paid
@@ -62,12 +56,9 @@ class TransactionItem:
             f"from_account: {self._from_account}, "
             f"to_bank: {self._to_bank}, "
             f"to_account: {self._to_account}, "
-            f"amount_received: {self._amount_received}, "
-            f"receiving_currency: {self._receiving_currency}, "
             f"amount_paid: {self._amount_paid}, "
             f"payment_currency: {self._payment_currency}, "
-            f"payment_format: {self._payment_format}, "
-            f"is_laundering: {self._is_laundering}"
+            f"payment_format: {self._payment_format}"
         )
 
     def is_sent_amount_below(self, max_amount: float) -> bool:
@@ -87,6 +78,12 @@ class TransactionItem:
 
     def has_any_payment_format(self, fmts: set) -> bool:
         return self._payment_format in fmts
+    
+    def get_from_account(self) -> str:
+        return self._from_account
+    
+    def get_to_account(self) -> str:
+        return self._to_account
 
     def get_from_account(self) -> str:
         return self._from_account
@@ -130,10 +127,8 @@ class TransactionItem:
             self._from_account,
             self._to_bank,
             self._to_account,
-            str(self._amount_received),
-            self._receiving_currency,
             str(self._amount_paid),
             self._payment_currency,
             self._payment_format,
-            str(self._is_laundering),
         ]
+

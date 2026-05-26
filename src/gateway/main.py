@@ -27,7 +27,6 @@ INPUT_ROUTING_KEYS = (
 INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -40,7 +39,6 @@ def handle_client_request(client_socket, msg_handler):
                 MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
             )
         )
-    batch = []
     try:
         while True:
             message = external.recv_msg(client_socket)

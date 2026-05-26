@@ -43,8 +43,10 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 class Filter:
     def __init__(self):
+        self.closed = False
         self.eof_seen: set[str] = set()
         self.batches: dict[str, list] = {}
+        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -70,6 +72,11 @@ class Filter:
             raise ValueError(
                 "Must define OUTPUT_QUEUES or OUTPUT_EXCHANGE_NAME+OUTPUT_ROUTING_KEYS"
             )
+
+    def _handle_sigterm(self, signum, frame):
+        self.close()
+        if self._prev_sigterm_handler:
+            self._prev_sigterm_handler(signum, frame)
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -99,6 +106,35 @@ class Filter:
         batch = self.batches.pop(client_id, [])
 
         if not batch:
+            return
+
+        if ADD_QUERY_ID:
+            self._send_output(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, batch])
+            )
+        else:
+            self._send_output(message_protocol.internal.serialize([client_id, batch]))
+
+    def _on_eof(self, client_id, counter):
+        if client_id not in self.eof_seen:
+            self.eof_seen.add(client_id)
+            logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}")
+            if counter > 1:
+                self.input_queue.send(
+                    message_protocol.internal.serialize([client_id, "EOF", counter - 1])
+                )
+            else:
+                self._send_output(message_protocol.internal.serialize([client_id]))
+                self.eof_seen.discard(client_id)
+        else:
+            # Re-enqueue always so an unseen worker gets to flush its batch first
+            self.input_queue.send(
+                message_protocol.internal.serialize([client_id, "EOF", counter])
+            )
+
+    def _on_message(self, message, ack, nack):
+        if self.closed:
+            ack()
             return
 
         if ADD_QUERY_ID:
