@@ -69,3 +69,15 @@ class TransactionItem:
     def is_between(self, date_from: datetime, date_to: datetime) -> bool:
         return date_from <= self._timestamp <= date_to
 
+    def to_fields(self) -> list[str]:
+        return [
+            self._timestamp.strftime(TIMESTAMP_FORMAT),
+            self._from_bank,
+            self._from_account,
+            self._to_bank,
+            self._to_account,
+            str(self._amount_paid),
+            self._payment_currency,
+            self._payment_format,
+        ]
+

@@ -91,9 +91,13 @@ class OgDetect:
                 ack()
                 return
 
-            from_account = fields[4]
-            to_account = fields[6]
-            self._get_log(client_id).write(f"{from_account}\t{to_account}\n".encode())
+            # fields = [client_id, query_number, row1, row2, ...]
+            # each row = [timestamp, from_bank, from_account, to_bank, to_account, ...]
+            log = self._get_log(client_id)
+            for row in fields[2:]:
+                from_account = row[2]
+                to_account = row[4]
+                log.write(f"{from_account}\t{to_account}\n".encode())
 
             ack()
         except Exception as e:

@@ -81,9 +81,15 @@ def handle_client_response(client_map, eof_counts, eof_lock, num_expected_eofs):
             else:
                 query_id, *data = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
-                external.send_data(
-                    client_socket, ",".join(data).encode("utf-8"), msg_type
-                )
+                if data and isinstance(data[0], list):
+                    for row in data:
+                        external.send_data(
+                            client_socket, ",".join(row).encode("utf-8"), msg_type
+                        )
+                else:
+                    external.send_data(
+                        client_socket, ",".join(data).encode("utf-8"), msg_type
+                    )
             ack()
         except socket.error:
             logging.error("The connection with the client was lost")
