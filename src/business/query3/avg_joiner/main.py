@@ -180,47 +180,52 @@ class AvgJoiner:
         for payment_format, avg in client_avgs.items():
             self._flush_to_output(client_id, payment_format, avg)
 
-    def _try_send_eof(self, client_id: str):
-        if client_id in self.second_period_eof and client_id in self.avg_eof:
-            self._flush_all_spill_to_output(client_id)
-            self._flush_output_batch(client_id)
-            self._send_output(message_protocol.internal.serialize([client_id]))
-            with self.avg_results_lock:
-                self.avg_results.pop(client_id, None)
-            self._cleanup_client(client_id)
-            self.second_period_eof.discard(client_id)
-            self.avg_eof.discard(client_id)
+    def _send_eof(self, client_id: str):
+        self._send_output(message_protocol.internal.serialize([client_id]))
+        with self.avg_results_lock:
+            self.avg_results.pop(client_id, None)
+        self._cleanup_client(client_id)
+        self.second_period_eof.discard(client_id)
+        self.avg_eof.discard(client_id)
 
     def _on_second_period_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received second period message")
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF"):
-                counter = AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[2])
-                logging.info(
-                    f"[QUERY {QUERY_NUMBER}] second_period EOF client={client_id} counter={counter}"
+            if len(fields) == 1 or (len(fields) == 4 and fields[1] == "EOF"):
+                remaining_joiners = (
+                    AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[2])
                 )
+                remaining_avg_ready = (
+                    AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[3])
+                )
+
                 if client_id not in self.eof_seen:
                     self.eof_seen.add(client_id)
-                    if counter > 1:
-                        self.second_period_consumer.send(
-                            message_protocol.internal.serialize(
-                                [client_id, "EOF", counter - 1]
-                            )
-                        )
-                    else:
-                        self.second_period_eof.add(client_id)
-                        self.eof_seen.discard(client_id)
-                        self._try_send_eof(client_id)
+                    remaining_joiners -= 1
+
+                if client_id in self.avg_eof:
+                    self.avg_eof.discard(client_id)
+                    remaining_avg_ready -= 1
+                    self._flush_all_spill_to_output(client_id)
+
+                self._flush_output_batch(client_id)
+
+                if remaining_joiners <= 0 and remaining_avg_ready <= 0:
+                    self._send_eof(client_id)
                 else:
                     self.second_period_consumer.send(
                         message_protocol.internal.serialize(
-                            [client_id, "EOF", counter]
+                            [
+                                client_id,
+                                "EOF",
+                                remaining_joiners,
+                                remaining_avg_ready,
+                            ]
                         )
                     )
-                    
+
                 ack()
                 return
 
@@ -234,15 +239,14 @@ class AvgJoiner:
                 with self.avg_results_lock:
                     avg = self.avg_results.get(client_id, {}).get(payment_format)
 
-                if avg is not None:
-                    if tx.is_sent_amount_below(avg / 100):
-                        output_batch.append(tx.to_fields())
-                else:
+                if avg is None:
                     self._spill_tx(client_id, tx)
+                elif tx.is_sent_amount_below(avg / 100):
+                    output_batch.append(tx.to_fields())
 
             self._append_output_rows(client_id, output_batch)
-
             ack()
+
         except Exception as e:
             logging.error(
                 f"[QUERY {QUERY_NUMBER}] Error processing second period message: {e}"
@@ -265,7 +269,8 @@ class AvgJoiner:
                     return
                 del self.avg_eof_counts[client_id]
                 self.avg_eof.add(client_id)
-                self._try_send_eof(client_id)
+                self._flush_all_spill_to_output(client_id)
+                self._flush_output_batch(client_id)
                 ack()
                 return
 
@@ -279,8 +284,6 @@ class AvgJoiner:
                         self.avg_results[client_id] = {}
 
                     self.avg_results[client_id][payment_format] = avg
-
-                self._flush_to_output(client_id, payment_format, avg)
 
             ack()
         except Exception as e:
