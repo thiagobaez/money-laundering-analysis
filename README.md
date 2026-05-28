@@ -108,7 +108,7 @@ make lint
 
 ## Queries
 
-[Notebook con querys en nuestra versión](https://www.kaggle.com/code/valenpontaut/money-laundering-analysis)
+[Notebook con querys en nuestra versión](https://www.kaggle.com/code/valenpontaut/money-laundering-analysis/notebook?scriptVersionId=322848864)
 
 
 **Q1** — Transacciones en USD menores a $50  
@@ -119,10 +119,6 @@ Workers: filter_usd, split_date, avg, avg_joiner
 
 **Q4** — Detección de cuentas con formato scather-gatter entre origen y destino  
 Workers: filter_usd, filter_date, split, og_detect, dt_detect, sg_detect
-
-Para esta query, comparamos el resultado que obtuvimos con Kaggle en este notebook, por si se quiere comparar:
-
-https://www.kaggle.com/code/thiagofernandobaez/query-4-thiago-s-version/edit
 
 
 **Q5** — Transacciones Wire/ACH en septiembre 2022 con monto < $1 USD  
