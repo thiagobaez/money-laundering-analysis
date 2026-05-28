@@ -85,12 +85,6 @@ class TransactionItem:
     def get_to_account(self) -> str:
         return self._to_account
 
-    def get_from_account(self) -> str:
-        return self._from_account
-
-    def get_to_account(self) -> str:
-        return self._to_account
-
     def _currency_to_iso(self, currency_name: str) -> str:
         code = _DATASET_NAME_TO_ISO.get(currency_name)
         if code is None:
