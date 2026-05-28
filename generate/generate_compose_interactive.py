@@ -82,9 +82,7 @@ def _gen_q4():
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_filter_date = _ask("filter_date  (workers)", 3)
     n_split = _ask("split        (workers)", 3)
-    n_og_detect = _ask("og_detect    (workers)", 3)
-    n_dt_detect = _ask("dt_detect    (workers)", 3)
-    n_sg_detect = _ask("sg_detect    (workers)", 3)
+    n_detect = _ask("og/dt/sg_det (workers)", 3)
     batch_size = _ask("batch_size", 20000)
     output = _ask("output file", "docker-compose-q4.yaml")
     _dump(
@@ -93,9 +91,7 @@ def _gen_q4():
             n_filter_usd,
             n_filter_date,
             n_split,
-            n_og_detect,
-            n_dt_detect,
-            n_sg_detect,
+            n_detect,
             batch_size,
         ),
         output,
@@ -139,9 +135,7 @@ def _gen_all():
     print("  -- Q4 --")
     q4_n_filter_date = _ask("  filter_date  (workers)", 3)
     q4_n_split = _ask("  split        (workers)", 3)
-    q4_n_og_detect = _ask("  og_detect    (workers)", 3)
-    q4_n_dt_detect = _ask("  dt_detect    (workers)", 3)
-    q4_n_sg_detect = _ask("  sg_detect    (workers)", 5)
+    q4_n_detect = _ask("  og/dt/sg_det (workers)", 3)
     q4_batch_size = _ask("  batch_size", 20000)
 
     print("  -- Q5 --")
@@ -165,9 +159,7 @@ def _gen_all():
             q3_batch_size=q3_batch_size,
             q4_n_filter_date=q4_n_filter_date,
             q4_n_split=q4_n_split,
-            q4_n_og_detect=q4_n_og_detect,
-            q4_n_dt_detect=q4_n_dt_detect,
-            q4_n_sg_detect=q4_n_sg_detect,
+            q4_n_detect=q4_n_detect,
             q4_batch_size=q4_batch_size,
             q5_n_filter_fmt=q5_n_filter_fmt,
             q5_n_converter=q5_n_converter,

@@ -6,7 +6,11 @@ El gateway usa un exchange directo (input_gateway_exchange) con 2 routing keys:
   - "filter_usd"    → pool compartido que filtra USD y distribuye a q1/q3/q4
   - "q5_filter_fmt" → workers de q5 (filtro de formato y fecha)
 
-NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_sg_detect (q4) + 1 (q5)
+NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_detect (q4) + 1 (q5)
+
+IMPORTANTE: og_detect, dt_detect y sg_detect deben tener el mismo número de workers
+porque cada sg_detect_i escucha exclusivamente en og_detect_{i+1}. Si difieren,
+los sg_detect sobrantes nunca reciben datos y el sistema se bloquea esperando sus EOFs.
 """
 
 import yaml
@@ -29,9 +33,7 @@ def generate_compose_all(
     # q4
     q4_n_filter_date: int = 3,
     q4_n_split: int = 3,
-    q4_n_og_detect: int = 3,
-    q4_n_dt_detect: int = 3,
-    q4_n_sg_detect: int = 3,
+    q4_n_detect: int = 3,
     q4_batch_size: int = 20000,
     # q5
     q5_n_filter_fmt: int = 7,
@@ -42,15 +44,15 @@ def generate_compose_all(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_sg_detect + 1
+    num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_detect + 1
 
     # -------------------------------------------------------------------------
     # Routing keys para q4 (1-indexed)
     # -------------------------------------------------------------------------
-    q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_og_detect)])
-    q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_dt_detect)])
-    q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_og_detect)])
-    q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_sg_detect)])
+    q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
+    q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
+    q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_detect)])
+    q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_detect)])
 
     # -------------------------------------------------------------------------
     # Routing keys para q3
@@ -63,7 +65,7 @@ def generate_compose_all(
     # =========================================================================
 
     # q4_sg_detect
-    for i in range(q4_n_sg_detect):
+    for i in range(q4_n_detect):
         services[f"q4_sg_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -83,8 +85,8 @@ def generate_compose_all(
                 f"DESTINATION_ROUTING_KEY=sg_detect_{i + 1}",
                 "OUTPUT_QUEUE=results_queue",
                 "MIN_COMMON=5",
-                f"NUM_OG_WORKERS={q4_n_og_detect}",
-                f"NUM_DT_WORKERS={q4_n_dt_detect}",
+                f"NUM_OG_WORKERS={q4_n_detect}",
+                f"NUM_DT_WORKERS={q4_n_detect}",
                 f"BATCH_SIZE={q4_batch_size}",
             ],
         }
@@ -92,9 +94,9 @@ def generate_compose_all(
     # q4_og_detect
     q4_sg_depends = {
         f"q4_sg_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_sg_detect)
+        for i in range(q4_n_detect)
     }
-    for i in range(q4_n_og_detect):
+    for i in range(q4_n_detect):
         services[f"q4_og_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -114,7 +116,7 @@ def generate_compose_all(
         }
 
     # q4_dt_detect
-    for i in range(q4_n_dt_detect):
+    for i in range(q4_n_detect):
         services[f"q4_dt_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -136,11 +138,11 @@ def generate_compose_all(
     # q4_split
     q4_og_depends = {
         f"q4_og_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_og_detect)
+        for i in range(q4_n_detect)
     }
     q4_dt_depends = {
         f"q4_dt_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_dt_detect)
+        for i in range(q4_n_detect)
     }
     for i in range(q4_n_split):
         services[f"q4_split_{i}"] = {
@@ -501,9 +503,7 @@ def main():
     # q4
     parser.add_argument("--q4-filter-date", type=int, default=3)
     parser.add_argument("--q4-split", type=int, default=3)
-    parser.add_argument("--q4-og-detect", type=int, default=3)
-    parser.add_argument("--q4-dt-detect", type=int, default=3)
-    parser.add_argument("--q4-sg-detect", type=int, default=3)
+    parser.add_argument("--q4-detect", type=int, default=3)
     parser.add_argument("--q4-batch-size", type=int, default=20000)
     # q5
     parser.add_argument("--q5-filter-fmt", type=int, default=7)
@@ -524,9 +524,7 @@ def main():
         q3_batch_size=args.q3_batch_size,
         q4_n_filter_date=args.q4_filter_date,
         q4_n_split=args.q4_split,
-        q4_n_og_detect=args.q4_og_detect,
-        q4_n_dt_detect=args.q4_dt_detect,
-        q4_n_sg_detect=args.q4_sg_detect,
+        q4_n_detect=args.q4_detect,
         q4_batch_size=args.q4_batch_size,
         q5_n_filter_fmt=args.q5_filter_fmt,
         q5_n_converter=args.q5_converter,
@@ -543,7 +541,7 @@ def main():
             Dumper=yaml.SafeDumper,
         )
 
-    num_eofs = 1 + args.q3_avg_joiner + args.q4_sg_detect + 1
+    num_eofs = 1 + args.q3_avg_joiner + args.q4_detect + 1
     print(f"Generated {args.output} with:")
     print(f"  input_file:          {args.input_file}")
     print(
@@ -554,7 +552,7 @@ def main():
         f"  Q3: split_date={args.q3_split_date}  avg={args.q3_avg}  avg_joiner={args.q3_avg_joiner}  batch={args.q3_batch_size}"
     )
     print(
-        f"  Q4: filter_date={args.q4_filter_date}  split={args.q4_split}  og={args.q4_og_detect}  dt={args.q4_dt_detect}  sg={args.q4_sg_detect}  batch={args.q4_batch_size}"
+        f"  Q4: filter_date={args.q4_filter_date}  split={args.q4_split}  detect={args.q4_detect}  batch={args.q4_batch_size}"
     )
     print(
         f"  Q5: filter_fmt={args.q5_filter_fmt}  converter={args.q5_converter}  filter_amount={args.q5_filter_amount}  batch={args.q5_batch_size}"

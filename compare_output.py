@@ -156,8 +156,11 @@ def compare_all(
 
 
 def main():
-    print("Queries disponibles: 1, 3, 4, 5, all")
-    choice = input("Que query queres comparar? [1/3/4/5/all]: ").strip().lower()
+    if len(sys.argv) > 1:
+        choice = sys.argv[1].strip().lower()
+    else:
+        print("Queries disponibles: 1, 3, 4, 5, all")
+        choice = input("Que query queres comparar? [1/3/4/5/all]: ").strip().lower()
 
     if choice == "all":
         queries = list(QUERY_CONFIG.keys())

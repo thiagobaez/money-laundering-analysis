@@ -19,7 +19,7 @@ DATA_DIR = "/data"
 class DtDetect:
     def __init__(self):
         self.closed = False
-        self._logs = {}  # client_id -> file handle for the single log file
+        self._logs = {}
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, INPUT_EXCHANGE_NAME, [INPUT_ROUTING_KEY]
@@ -92,8 +92,6 @@ class DtDetect:
                 ack()
                 return
 
-            # fields = [client_id, query_number, batch]
-            # each row = [timestamp, from_bank, from_account, to_bank, to_account, ...]
             log = self._get_log(client_id)
             for row in fields[2]:
                 from_account = row[2]
