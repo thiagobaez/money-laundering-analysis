@@ -1,0 +1,402 @@
+services:
+  client0:
+    container_name: client
+    build:
+      context: ./src
+      dockerfile: client/Dockerfile
+    depends_on:
+      - filter_usd_1
+      - filter_usd_2
+      - filter_usd_3
+    environment:
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
+    - OUTPUT_FILE=/output/client0/output.csv
+    - BATCH_SIZE=10000
+    volumes:
+    - ./datasets:/datasets
+    - ./output:/output
+
+  gateway:
+    build:
+      context: ./src/
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUE=results_queue
+    - NUM_EXPECTED_EOFS=3
+    - PYTHONUNBUFFERED=1
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+
+  filter_usd_1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_1
+    depends_on:
+      - q4_filter_date_1
+      - q4_filter_date_2
+      - q4_filter_date_3
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+
+  filter_usd_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_2
+    depends_on:
+      - q4_filter_date_1
+      - q4_filter_date_2
+      - q4_filter_date_3
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+
+  filter_usd_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_3
+    depends_on:
+      - q4_filter_date_1
+      - q4_filter_date_2
+      - q4_filter_date_3
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+
+  q4_filter_date_1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q4_filter_date_1
+    depends_on:
+      - q4_split_1
+      - q4_split_2
+      - q4_split_3
+    environment:
+    - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=4
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_filter_date_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q4_filter_date_2
+    depends_on:
+      - q4_split_1
+      - q4_split_2
+      - q4_split_3
+    environment:
+    - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=4
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_filter_date_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q4_filter_date_3
+    depends_on:
+      - q4_split_1
+      - q4_split_2
+      - q4_split_3
+    environment:
+    - ADD_QUERY_ID=True
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=4
+    - GE_DATE=2022-09-01
+    - LE_DATE=2022-09-05
+    - INPUT_QUEUE=q4_filter_date
+    - OUTPUT_QUEUES=tx_usd_date
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_split_1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: q4_split_1
+    depends_on:
+      - q4_og_detect_1
+      - q4_og_detect_2
+      - q4_og_detect_3
+      - q4_dt_detect_1
+      - q4_dt_detect_2
+      - q4_dt_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
+    - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_split_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: q4_split_2
+    depends_on:
+      - q4_og_detect_1
+      - q4_og_detect_2
+      - q4_og_detect_3
+      - q4_dt_detect_1
+      - q4_dt_detect_2
+      - q4_dt_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
+    - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_split_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/split/Dockerfile
+    container_name: q4_split_3
+    depends_on:
+      - q4_og_detect_1
+      - q4_og_detect_2
+      - q4_og_detect_3
+      - q4_dt_detect_1
+      - q4_dt_detect_2
+      - q4_dt_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - SPLIT_AMOUNT=3
+    - INPUT_QUEUE=tx_usd_date
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
+    - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
+    - MOM_HOST=rabbitmq
+    - BATCH_SIZE=10000
+
+  q4_og_detect_1:
+    build:
+      context: ./src/
+      dockerfile: business/query4/og_detect/Dockerfile
+    container_name: q4_og_detect_1
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEY=tx_origin_1
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
+    - MIN_DESTINATIONS=5
+
+  q4_og_detect_2:
+    build:
+      context: ./src/
+      dockerfile: business/query4/og_detect/Dockerfile
+    container_name: q4_og_detect_2
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEY=tx_origin_2
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
+    - MIN_DESTINATIONS=5
+
+  q4_og_detect_3:
+    build:
+      context: ./src/
+      dockerfile: business/query4/og_detect/Dockerfile
+    container_name: q4_og_detect_3
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - EXCHANGE_NAME=q4_split_exchange
+    - ORIGIN_ROUTING_KEY=tx_origin_3
+    - OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange
+    - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
+    - MIN_DESTINATIONS=5
+
+  q4_dt_detect_1:
+    build:
+      context: ./src/
+      dockerfile: business/query4/dt_detect/Dockerfile
+    container_name: q4_dt_detect_1
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_1
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
+    - MIN_ORIGINS=5
+
+  q4_dt_detect_2:
+    build:
+      context: ./src/
+      dockerfile: business/query4/dt_detect/Dockerfile
+    container_name: q4_dt_detect_2
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_2
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
+    - MIN_ORIGINS=5
+
+  q4_dt_detect_3:
+    build:
+      context: ./src/
+      dockerfile: business/query4/dt_detect/Dockerfile
+    container_name: q4_dt_detect_3
+    depends_on:
+      - q4_sg_detect_1
+      - q4_sg_detect_2
+      - q4_sg_detect_3
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - INPUT_EXCHANGE_NAME=q4_split_exchange
+    - INPUT_ROUTING_KEY=tx_destination_3
+    - OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange
+    - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
+    - MIN_ORIGINS=5
+
+  q4_sg_detect_1:
+    build:
+      context: ./src/
+      dockerfile: business/query4/sg_detect/Dockerfile
+    container_name: q4_sg_detect_1
+    depends_on:
+      - gateway
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_1
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_1
+    - OUTPUT_QUEUE=results_queue
+    - MIN_COMMON=5
+    - NUM_OG_WORKERS=3
+    - NUM_DT_WORKERS=3
+
+  q4_sg_detect_2:
+    build:
+      context: ./src/
+      dockerfile: business/query4/sg_detect/Dockerfile
+    container_name: q4_sg_detect_2
+    depends_on:
+      - gateway
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_2
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_2
+    - OUTPUT_QUEUE=results_queue
+    - MIN_COMMON=5
+    - NUM_OG_WORKERS=3
+    - NUM_DT_WORKERS=3
+
+  q4_sg_detect_3:
+    build:
+      context: ./src/
+      dockerfile: business/query4/sg_detect/Dockerfile
+    container_name: q4_sg_detect_3
+    depends_on:
+      - gateway
+    environment:
+    - QUERY_NUMBER=4
+    - MOM_HOST=rabbitmq
+    - ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange
+    - ORIGIN_ROUTING_KEY=og_detect_3
+    - DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange
+    - DESTINATION_ROUTING_KEY=sg_detect_3
+    - OUTPUT_QUEUE=results_queue
+    - MIN_COMMON=5
+    - NUM_OG_WORKERS=3
+    - NUM_DT_WORKERS=3
+
+  rabbitmq:
+    build:
+      context: ./src/
+      dockerfile: rabbitmq/Dockerfile
+    container_name: rabbitmq
+    environment:
+    - RABBITMQ_LOG_LEVELS=error
+    healthcheck:
+      interval: 5s
+      retries: 10
+      start_period: 50s
+      test: rabbitmq-diagnostics check_port_connectivity
+      timeout: 3s
+    ports:
+    - 5672:5672
+    - 15672:15672
