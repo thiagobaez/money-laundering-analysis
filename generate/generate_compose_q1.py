@@ -67,8 +67,7 @@ def generate_compose_q1(
 
     # client0 (depende de filter_usd para que todo el pipeline este listo)
     filter_usd_depends = {
-        f"filter_usd_{i}": {"condition": "service_started"}
-        for i in range(n_filter_usd)
+        f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
     services["client0"] = {
         "container_name": "client",

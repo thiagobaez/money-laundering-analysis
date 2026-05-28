@@ -17,10 +17,16 @@ def generate_compose_q4(
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
     # Routing keys (1-indexed para coincidir con el compose sagrado)
-    origin_routing_keys = ",".join([f"tx_origin_{i+1}" for i in range(n_og_detect)])
-    destination_routing_keys = ",".join([f"tx_destination_{i+1}" for i in range(n_dt_detect)])
-    og_detect_routing_keys = ",".join([f"og_detect_{i+1}" for i in range(n_og_detect)])
-    sg_detect_routing_keys = ",".join([f"sg_detect_{i+1}" for i in range(n_sg_detect)])
+    origin_routing_keys = ",".join([f"tx_origin_{i + 1}" for i in range(n_og_detect)])
+    destination_routing_keys = ",".join(
+        [f"tx_destination_{i + 1}" for i in range(n_dt_detect)]
+    )
+    og_detect_routing_keys = ",".join(
+        [f"og_detect_{i + 1}" for i in range(n_og_detect)]
+    )
+    sg_detect_routing_keys = ",".join(
+        [f"sg_detect_{i + 1}" for i in range(n_sg_detect)]
+    )
 
     # q4_sg_detect (los mas profundos — dependen del gateway)
     for i in range(n_sg_detect):
@@ -38,9 +44,9 @@ def generate_compose_q4(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange",
-                f"ORIGIN_ROUTING_KEY=og_detect_{i+1}",
+                f"ORIGIN_ROUTING_KEY=og_detect_{i + 1}",
                 "DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange",
-                f"DESTINATION_ROUTING_KEY=sg_detect_{i+1}",
+                f"DESTINATION_ROUTING_KEY=sg_detect_{i + 1}",
                 "OUTPUT_QUEUE=results_queue",
                 "MIN_COMMON=5",
                 f"NUM_OG_WORKERS={n_og_detect}",
@@ -50,7 +56,8 @@ def generate_compose_q4(
 
     # q4_og_detect (dependen de sg_detect para que bindeen primero)
     sg_detect_depends = {
-        f"q4_sg_detect_{i}": {"condition": "service_started"} for i in range(n_sg_detect)
+        f"q4_sg_detect_{i}": {"condition": "service_started"}
+        for i in range(n_sg_detect)
     }
     for i in range(n_og_detect):
         services[f"q4_og_detect_{i}"] = {
@@ -67,7 +74,7 @@ def generate_compose_q4(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "EXCHANGE_NAME=q4_split_exchange",
-                f"ORIGIN_ROUTING_KEY=tx_origin_{i+1}",
+                f"ORIGIN_ROUTING_KEY=tx_origin_{i + 1}",
                 "OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={og_detect_routing_keys}",
                 "MIN_DESTINATIONS=5",
@@ -90,7 +97,7 @@ def generate_compose_q4(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "INPUT_EXCHANGE_NAME=q4_split_exchange",
-                f"INPUT_ROUTING_KEY=tx_destination_{i+1}",
+                f"INPUT_ROUTING_KEY=tx_destination_{i + 1}",
                 "OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={sg_detect_routing_keys}",
                 "MIN_ORIGINS=5",
@@ -99,10 +106,12 @@ def generate_compose_q4(
 
     # q4_split (depende de og_detect y dt_detect para que bindeen primero)
     og_detect_depends = {
-        f"q4_og_detect_{i}": {"condition": "service_started"} for i in range(n_og_detect)
+        f"q4_og_detect_{i}": {"condition": "service_started"}
+        for i in range(n_og_detect)
     }
     dt_detect_depends = {
-        f"q4_dt_detect_{i}": {"condition": "service_started"} for i in range(n_dt_detect)
+        f"q4_dt_detect_{i}": {"condition": "service_started"}
+        for i in range(n_dt_detect)
     }
     for i in range(n_split):
         services[f"q4_split_{i}"] = {
@@ -158,7 +167,8 @@ def generate_compose_q4(
 
     # filter_usd (depende de q4_filter_date para que bindee primero)
     filter_date_depends = {
-        f"q4_filter_date_{i}": {"condition": "service_started"} for i in range(n_filter_date)
+        f"q4_filter_date_{i}": {"condition": "service_started"}
+        for i in range(n_filter_date)
     }
     for i in range(n_filter_usd):
         services[f"filter_usd_{i}"] = {

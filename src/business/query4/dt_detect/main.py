@@ -21,8 +21,12 @@ class DtDetect:
         self.closed = False
         self._logs = {}  # client_id -> file handle for the single log file
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, INPUT_EXCHANGE_NAME, [INPUT_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
+        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, INPUT_EXCHANGE_NAME, [INPUT_ROUTING_KEY]
+        )
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS
+        )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -42,7 +46,9 @@ class DtDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
-        logging.info(f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}"
+        )
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -61,14 +67,17 @@ class DtDetect:
         for to_acc, from_accs in account_map.items():
             if len(from_accs) >= MIN_ORIGINS:
                 msg = message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, to_acc] + list(from_accs))
+                    [client_id, QUERY_NUMBER, to_acc] + list(from_accs)
+                )
                 self.output_queue.send(msg)
 
         client_dir = self._client_dir(client_id)
         if os.path.exists(client_dir):
             shutil.rmtree(client_dir)
 
-        self.output_queue.send(message_protocol.internal.serialize([client_id, QUERY_NUMBER]))
+        self.output_queue.send(
+            message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+        )
 
     def _on_message(self, message, ack, nack):
         if self.closed:
@@ -110,6 +119,7 @@ class DtDetect:
             self.input_queue.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)

@@ -119,6 +119,10 @@ class TestCompareQuery:
         _write_csv(expected, [["a"]])
 
         ok = _compare_query(
-            str(tmp_path / "nonexistent.csv"), expected, 1, _row_key_default, has_header=False
+            str(tmp_path / "nonexistent.csv"),
+            expected,
+            1,
+            _row_key_default,
+            has_header=False,
         )
         assert not ok

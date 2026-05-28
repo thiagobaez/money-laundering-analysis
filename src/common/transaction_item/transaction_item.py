@@ -78,10 +78,10 @@ class TransactionItem:
 
     def has_any_payment_format(self, fmts: set) -> bool:
         return self._payment_format in fmts
-    
+
     def get_from_account(self) -> str:
         return self._from_account
-    
+
     def get_to_account(self) -> str:
         return self._to_account
 
@@ -131,4 +131,3 @@ class TransactionItem:
             self._payment_currency,
             self._payment_format,
         ]
-

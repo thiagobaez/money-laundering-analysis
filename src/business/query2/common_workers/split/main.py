@@ -14,27 +14,28 @@ DESTINATION_ROUTING_KEYS = os.environ["DESTINATION_ROUTING_KEYS"].split(",")
 SPLIT_AMOUNT = int(os.environ["SPLIT_AMOUNT"])
 BATCH_SIZE = int(os.environ["BATCH_SIZE"])
 
+
 class Split:
     def __init__(self):
         self.closed = False
         self.eof_received_by_client = []
-        self._origin_batches = {}   # (client_id, routing_key) -> list of rows
-        self._dest_batches = {}     # (client_id, routing_key) -> list of rows
+        self._origin_batches = {}  # (client_id, routing_key) -> list of rows
+        self._dest_batches = {}  # (client_id, routing_key) -> list of rows
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
-        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST,
-        EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS)
-
+        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, INPUT_QUEUE
+        )
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS
+        )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
         if self._prev_sigterm_handler:
             self._prev_sigterm_handler(signum, frame)
 
-
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
-
 
     def _is_eof(self, fields):
         return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
@@ -72,7 +73,9 @@ class Split:
         self._flush_all_batches(client_id)
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
-            logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT] EOF received for client {client_id}")
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] [SPLIT] EOF received for client {client_id}"
+            )
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
@@ -103,13 +106,19 @@ class Split:
                 tx = self._parse_transaction(row)
 
                 origin_key = ORIGIN_ROUTING_KEYS[
-                    self._get_hash_index_queue(tx.get_from_account(), len(ORIGIN_ROUTING_KEYS))
+                    self._get_hash_index_queue(
+                        tx.get_from_account(), len(ORIGIN_ROUTING_KEYS)
+                    )
                 ]
                 dest_key = DESTINATION_ROUTING_KEYS[
-                    self._get_hash_index_queue(tx.get_to_account(), len(DESTINATION_ROUTING_KEYS))
+                    self._get_hash_index_queue(
+                        tx.get_to_account(), len(DESTINATION_ROUTING_KEYS)
+                    )
                 ]
 
-                origin_batch = self._origin_batches.setdefault((client_id, origin_key), [])
+                origin_batch = self._origin_batches.setdefault(
+                    (client_id, origin_key), []
+                )
                 origin_batch.append(row)
                 if len(origin_batch) >= BATCH_SIZE:
                     self._flush_origin_batch(client_id, origin_key)
@@ -134,7 +143,8 @@ class Split:
             self.output_queue.close()
             self.input_queue.close()
         except Exception as e:
-            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")        
+            logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)

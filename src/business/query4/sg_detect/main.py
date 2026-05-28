@@ -24,9 +24,15 @@ class SgDetect:
     def __init__(self):
         self.closed = False
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.origins_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, ORIGIN_EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
-        self.destinations_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, DESTINATION_EXCHANGE_NAME, [DESTINATION_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
+        self.origins_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, ORIGIN_EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
+        )
+        self.destinations_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, DESTINATION_EXCHANGE_NAME, [DESTINATION_ROUTING_KEY]
+        )
+        self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
+            MOM_HOST, OUTPUT_QUEUE
+        )
         self.client_id = None
         self.origins_eofs = 0
         self.destinations_eofs = 0
@@ -54,7 +60,9 @@ class SgDetect:
             if len(fields) == 2:
                 self.origins_eofs += 1
                 if self.origins_eofs >= NUM_OG_WORKERS:
-                    logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All origin EOFs received for client {client_id}")
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All origin EOFs received for client {client_id}"
+                    )
                     self.origins_queue.stop_consuming()
                 ack()
                 return
@@ -84,7 +92,9 @@ class SgDetect:
             if len(fields) == 2:
                 self.destinations_eofs += 1
                 if self.destinations_eofs >= NUM_DT_WORKERS:
-                    logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All destination EOFs received for client {client_id}")
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] All destination EOFs received for client {client_id}"
+                    )
                     self.destinations_queue.stop_consuming()
                 ack()
                 return
@@ -113,7 +123,9 @@ class SgDetect:
         for dest_filename in os.listdir(dest_dir):
             dest_account = dest_filename[:-4]
             with open(os.path.join(dest_dir, dest_filename)) as f:
-                dest_data[dest_account] = set(line.strip() for line in f if line.strip())
+                dest_data[dest_account] = set(
+                    line.strip() for line in f if line.strip()
+                )
 
         results = []
         for origin_filename in os.listdir(origins_dir):
@@ -124,22 +136,23 @@ class SgDetect:
             for dest_account, origins_of_dest in dest_data.items():
                 common = destinations_of_origin & origins_of_dest
                 if len(common) >= MIN_COMMON:
-                    results.append([origin_account, dest_account] + sorted(list(common)))
+                    results.append(
+                        [origin_account, dest_account] + sorted(list(common))
+                    )
 
         if results:
-            self.output_queue.send(message_protocol.internal.serialize(
-                [client_id, QUERY_NUMBER, results]
-            ))
+            self.output_queue.send(
+                message_protocol.internal.serialize([client_id, QUERY_NUMBER, results])
+            )
 
     def run(self):
 
         origins_thread = threading.Thread(
-            target=self.origins_queue.start_consuming,
-            args=(self._on_origins_message,)
+            target=self.origins_queue.start_consuming, args=(self._on_origins_message,)
         )
         destinations_thread = threading.Thread(
             target=self.destinations_queue.start_consuming,
-            args=(self._on_destinations_message,)
+            args=(self._on_destinations_message,),
         )
 
         origins_thread.start()

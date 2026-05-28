@@ -41,7 +41,9 @@ class Client:
                 filtered = [v for i, v in enumerate(row) if i not in self._SKIP_COLS]
                 batch.append(filtered)
                 if len(batch) >= BATCH_SIZE:
-                    external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)
+                    external.send_batch(
+                        self._socket, batch, external.MsgType.DATA_BATCH
+                    )
                     batch = []
             if batch:
                 external.send_batch(self._socket, batch, external.MsgType.DATA_BATCH)

@@ -4,6 +4,7 @@ from .middleware import MessageMiddlewareQueue, MessageMiddlewareExchange
 
 _CONNECTION_PARAMS = dict(heartbeat=0, blocked_connection_timeout=300)
 
+
 class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
     def __init__(self, host, queue_name):
         try:
@@ -12,7 +13,8 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             )
             self.channel = self.connection.channel()
             self.channel.queue_declare(
-                queue=queue_name, durable=True,
+                queue=queue_name,
+                durable=True,
                 arguments={"x-queue-mode": "lazy"},
             )
             self.queue_name = queue_name
@@ -74,7 +76,8 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
     def start_consuming(self, on_message_callback):
         self.queue_name = "_".join(sorted(self.routing_keys))
         self.channel.queue_declare(
-            queue=self.queue_name, durable=True,
+            queue=self.queue_name,
+            durable=True,
             arguments={"x-queue-mode": "lazy"},
         )
         for key in self.routing_keys:

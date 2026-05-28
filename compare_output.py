@@ -51,7 +51,9 @@ def _compare_query(
         actual_rows = actual_rows[1:]
         expected_rows = expected_rows[1:]
         if actual_header != expected_header:
-            print(f"  [HEADER MISMATCH] actual={actual_header} expected={expected_header}")
+            print(
+                f"  [HEADER MISMATCH] actual={actual_header} expected={expected_header}"
+            )
 
     actual_keys = [row_key(r) for r in actual_rows if r]
     expected_keys = [row_key(r) for r in expected_rows if r]
@@ -79,7 +81,9 @@ def _compare_query(
         if len(missing) > 10:
             print(f"      ... y {len(missing) - 10} mas")
     if extra:
-        print(f"    Sobran {sum(extra.values())} fila(s) inesperadas en el output actual:")
+        print(
+            f"    Sobran {sum(extra.values())} fila(s) inesperadas en el output actual:"
+        )
         for k, count in list(extra.items())[:10]:
             print(f"      x{count}: {k}")
         if len(extra) > 10:
@@ -134,7 +138,9 @@ def compare_query(
 
     print(f"\n--- Query {query_num} ---")
     ok_count = _compare_count(actual_count, expected_count)
-    ok_tx = _compare_query(actual_tx, expected_tx, query_num, cfg["row_key"], cfg["has_header"])
+    ok_tx = _compare_query(
+        actual_tx, expected_tx, query_num, cfg["row_key"], cfg["has_header"]
+    )
     return ok_count and ok_tx
 
 

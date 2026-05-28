@@ -7,6 +7,7 @@ una por query. Cada pipeline de query recibe su propio subconjunto de mensajes.
 
 NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_sg_detect (q4) + 1 (q5)
 """
+
 import yaml
 import argparse
 
@@ -45,10 +46,10 @@ def generate_compose_all(
     # -------------------------------------------------------------------------
     # Routing keys para q4 (1-indexed)
     # -------------------------------------------------------------------------
-    q4_origin_rks = ",".join([f"tx_origin_{i+1}" for i in range(q4_n_og_detect)])
-    q4_dest_rks = ",".join([f"tx_destination_{i+1}" for i in range(q4_n_dt_detect)])
-    q4_og_rks = ",".join([f"og_detect_{i+1}" for i in range(q4_n_og_detect)])
-    q4_sg_rks = ",".join([f"sg_detect_{i+1}" for i in range(q4_n_sg_detect)])
+    q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_og_detect)])
+    q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_dt_detect)])
+    q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_og_detect)])
+    q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_sg_detect)])
 
     # -------------------------------------------------------------------------
     # Routing keys para q3
@@ -76,9 +77,9 @@ def generate_compose_all(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "ORIGIN_EXCHANGE_NAME=q4_og_detect_exchange",
-                f"ORIGIN_ROUTING_KEY=og_detect_{i+1}",
+                f"ORIGIN_ROUTING_KEY=og_detect_{i + 1}",
                 "DESTINATION_EXCHANGE_NAME=q4_dt_detect_exchange",
-                f"DESTINATION_ROUTING_KEY=sg_detect_{i+1}",
+                f"DESTINATION_ROUTING_KEY=sg_detect_{i + 1}",
                 "OUTPUT_QUEUE=results_queue",
                 "MIN_COMMON=5",
                 f"NUM_OG_WORKERS={q4_n_og_detect}",
@@ -88,7 +89,8 @@ def generate_compose_all(
 
     # q4_og_detect
     q4_sg_depends = {
-        f"q4_sg_detect_{i}": {"condition": "service_started"} for i in range(q4_n_sg_detect)
+        f"q4_sg_detect_{i}": {"condition": "service_started"}
+        for i in range(q4_n_sg_detect)
     }
     for i in range(q4_n_og_detect):
         services[f"q4_og_detect_{i}"] = {
@@ -102,7 +104,7 @@ def generate_compose_all(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "EXCHANGE_NAME=q4_split_exchange",
-                f"ORIGIN_ROUTING_KEY=tx_origin_{i+1}",
+                f"ORIGIN_ROUTING_KEY=tx_origin_{i + 1}",
                 "OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={q4_og_rks}",
                 "MIN_DESTINATIONS=5",
@@ -122,7 +124,7 @@ def generate_compose_all(
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
                 "INPUT_EXCHANGE_NAME=q4_split_exchange",
-                f"INPUT_ROUTING_KEY=tx_destination_{i+1}",
+                f"INPUT_ROUTING_KEY=tx_destination_{i + 1}",
                 "OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={q4_sg_rks}",
                 "MIN_ORIGINS=5",
@@ -131,10 +133,12 @@ def generate_compose_all(
 
     # q4_split
     q4_og_depends = {
-        f"q4_og_detect_{i}": {"condition": "service_started"} for i in range(q4_n_og_detect)
+        f"q4_og_detect_{i}": {"condition": "service_started"}
+        for i in range(q4_n_og_detect)
     }
     q4_dt_depends = {
-        f"q4_dt_detect_{i}": {"condition": "service_started"} for i in range(q4_n_dt_detect)
+        f"q4_dt_detect_{i}": {"condition": "service_started"}
+        for i in range(q4_n_dt_detect)
     }
     for i in range(q4_n_split):
         services[f"q4_split_{i}"] = {
@@ -183,7 +187,8 @@ def generate_compose_all(
 
     # q4_filter_usd (usa routing key propio para no mezclar con q1/q3)
     q4_filter_date_depends = {
-        f"q4_filter_date_{i}": {"condition": "service_started"} for i in range(q4_n_filter_date)
+        f"q4_filter_date_{i}": {"condition": "service_started"}
+        for i in range(q4_n_filter_date)
     }
     for i in range(q4_n_filter_usd):
         services[f"q4_filter_usd_{i}"] = {
@@ -287,7 +292,8 @@ def generate_compose_all(
 
     # avg (depende de avg_joiner para que bindee primero)
     avg_joiner_depends = {
-        f"avg_joiner_{i}": {"condition": "service_started"} for i in range(q3_n_avg_joiner)
+        f"avg_joiner_{i}": {"condition": "service_started"}
+        for i in range(q3_n_avg_joiner)
     }
     for i in range(q3_n_avg):
         services[f"avg_{i}"] = {
@@ -307,7 +313,9 @@ def generate_compose_all(
         }
 
     # q3_filter_usd (usa exchange con routing key propio)
-    q3_avg_depends = {f"avg_{i}": {"condition": "service_started"} for i in range(q3_n_avg)}
+    q3_avg_depends = {
+        f"avg_{i}": {"condition": "service_started"} for i in range(q3_n_avg)
+    }
     for i in range(q3_n_filter_usd):
         services[f"q3_filter_usd_{i}"] = {
             "build": {
@@ -419,7 +427,8 @@ def generate_compose_all(
 
     # filter_q5_amount
     q5_converter_depends = {
-        f"converter_{i}": {"condition": "service_started"} for i in range(q5_n_converter)
+        f"converter_{i}": {"condition": "service_started"}
+        for i in range(q5_n_converter)
     }
     for i in range(q5_n_filter_amount):
         services[f"filter_q5_amount_{i}"] = {
@@ -518,7 +527,9 @@ def generate_compose_all(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate docker-compose-all.yaml (queries 1+3+4+5)")
+    parser = argparse.ArgumentParser(
+        description="Generate docker-compose-all.yaml (queries 1+3+4+5)"
+    )
     parser.add_argument("--input-file", type=str, default="HI-Medium_Trans.csv")
     parser.add_argument("--output", type=str, default="docker-compose-all.yaml")
     # q1
@@ -581,10 +592,18 @@ def main():
     num_eofs = 1 + args.q3_avg_joiner + args.q4_sg_detect + 1
     print(f"Generated {args.output} with:")
     print(f"  input_file:          {args.input_file}")
-    print(f"  Q1: filter_usd={args.q1_filter_usd}  filter_amount={args.q1_filter_amount}  batch={args.q1_batch_size}")
-    print(f"  Q3: filter_usd={args.q3_filter_usd}  split_date={args.q3_split_date}  avg={args.q3_avg}  avg_joiner={args.q3_avg_joiner}  batch={args.q3_batch_size}")
-    print(f"  Q4: filter_usd={args.q4_filter_usd}  filter_date={args.q4_filter_date}  split={args.q4_split}  og={args.q4_og_detect}  dt={args.q4_dt_detect}  sg={args.q4_sg_detect}  batch={args.q4_batch_size}")
-    print(f"  Q5: filter_fmt={args.q5_filter_fmt}  converter={args.q5_converter}  filter_amount={args.q5_filter_amount}  batch={args.q5_batch_size}")
+    print(
+        f"  Q1: filter_usd={args.q1_filter_usd}  filter_amount={args.q1_filter_amount}  batch={args.q1_batch_size}"
+    )
+    print(
+        f"  Q3: filter_usd={args.q3_filter_usd}  split_date={args.q3_split_date}  avg={args.q3_avg}  avg_joiner={args.q3_avg_joiner}  batch={args.q3_batch_size}"
+    )
+    print(
+        f"  Q4: filter_usd={args.q4_filter_usd}  filter_date={args.q4_filter_date}  split={args.q4_split}  og={args.q4_og_detect}  dt={args.q4_dt_detect}  sg={args.q4_sg_detect}  batch={args.q4_batch_size}"
+    )
+    print(
+        f"  Q5: filter_fmt={args.q5_filter_fmt}  converter={args.q5_converter}  filter_amount={args.q5_filter_amount}  batch={args.q5_batch_size}"
+    )
     print(f"  NUM_EXPECTED_EOFS:   {num_eofs}")
 
 

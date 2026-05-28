@@ -22,8 +22,12 @@ class OgDetect:
         self.closed = False
         self._logs = {}  # client_id -> file handle for the single log file
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
-        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY])
-        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS)
+        self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
+        )
+        self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
+            MOM_HOST, OUTPUT_EXCHANGE_NAME, OUTPUT_ROUTING_KEYS
+        )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -47,7 +51,9 @@ class OgDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
-        logging.info(f"[QUERY {QUERY_NUMBER}] [OG_DETECT] EOF received for client {client_id}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [OG_DETECT] EOF received for client {client_id}"
+        )
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -66,7 +72,8 @@ class OgDetect:
         for from_acc, to_accs in account_map.items():
             if len(to_accs) >= MIN_DESTINATIONS:
                 msg = message_protocol.internal.serialize(
-                    [client_id, QUERY_NUMBER, from_acc] + list(to_accs))
+                    [client_id, QUERY_NUMBER, from_acc] + list(to_accs)
+                )
                 idx = self._get_hash_index_queue(from_acc, len(OUTPUT_ROUTING_KEYS))
                 self.output_queue.send(msg, OUTPUT_ROUTING_KEYS[idx])
 
@@ -118,6 +125,7 @@ class OgDetect:
             self.input_queue.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
+
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
