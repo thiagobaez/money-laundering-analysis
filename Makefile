@@ -1,4 +1,4 @@
-.PHONY: all lint test-unit test-e2e test compare up down logs switch generate
+.PHONY: lint compare up down logs switch generate
 
 COMPOSE_FILE := $(shell cat .compose 2>/dev/null || echo docker-compose.yaml)
 
@@ -29,31 +29,8 @@ down:
 logs:
 	docker compose -f $(COMPOSE_FILE) logs
 
-all: lint test-unit
-
 lint:
 	ruff check src/
-
-test-unit:
-	pytest tests/unit/ -v --cov=src --cov-report=term-missing
-
-test-e2e:
-	pytest tests/e2e/ -v
-
-test:
-	@mkdir -p output; \
-	COMPOSE_HTTP_TIMEOUT=300 docker compose -f docker-compose-all.yaml up --build --remove-orphans --detach; \
-	echo "Esperando que el cliente termine..."; \
-	client_exit=$$(docker wait client); \
-	if [ "$$client_exit" != "0" ]; then \
-		echo "El cliente termino con error (exit code $$client_exit)"; \
-		$(MAKE) down COMPOSE_FILE=docker-compose-all.yaml; \
-		exit 1; \
-	fi; \
-	python3 compare_output.py all; \
-	compare_exit=$$?; \
-	$(MAKE) down COMPOSE_FILE=docker-compose-all.yaml; \
-	exit $$compare_exit
 
 compare:
 	python3 compare_output.py

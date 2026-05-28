@@ -9,7 +9,7 @@ Alumnos:
 Bajar los datasets de [Kaggle - IBM Transactions for Anti-Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml) y poner los archivos en el directorio `datasets/`.
 
 
-# Expected Output
+## Expected Output
 
 Bajar los [archivos de salida esperada](https://drive.google.com/drive/folders/1bOl9gDLcdXP1tUwwhLBHqjyLvgr9zjMQ?usp=sharing) y guardarlos dentro de la carpeta `expected` en el repositorio.
 
@@ -24,8 +24,7 @@ Bajar los [archivos de salida esperada](https://drive.google.com/drive/folders/1
 4. make down          -> baja todo y limpia
 
 # para correr todas las queries de una:
-make test             -> corre docker-compose-all.yaml, espera al cliente, compara y limpia
-make compare          -> compara manualmente contra los expected (interactivo)
+make compare          -> compara manualmente contra los expected files.
 ```
 
 ---
@@ -93,9 +92,7 @@ make logs muestra los logs del compose activo sin seguirlos.
 
 ---
 
-### make test / make compare
-
-make test corre el sistema completo con docker-compose-all.yaml, espera al cliente, compara contra los expected y limpia.
+### make compare
 
 make compare abre el script de comparación para elegir qué query verificar. Compara count.csv y tx.csv contra expected/ sin importar el orden de las filas. Para Q4 las cuentas intermediarias también se comparan sin orden.
 
@@ -104,12 +101,15 @@ make compare abre el script de comparación para elegir qué query verificar. Co
 ### make lint
 
 ```
-make lint        # ruff check src/
+make lint 
 ```
 
----
+
 
 ## Queries
+
+[Notebook con querys en nuestra versión](https://www.kaggle.com/code/valenpontaut/money-laundering-analysis)
+
 
 **Q1** — Transacciones en USD menores a $50  
 Workers: filter_usd, filter_amount
