@@ -17,7 +17,6 @@ def generate_compose_q3(
     avg_joiner_routing_keys = ",".join([f"avg_joiner_{i}" for i in range(n_avg_joiner)])
     avg_routing_keys = ",".join([f"avg_{i}" for i in range(n_avg)])
 
-    # client
     services["client0"] = {
         "container_name": "client",
         "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
@@ -32,7 +31,6 @@ def generate_compose_q3(
         "volumes": ["./datasets:/datasets", "./output:/output"],
     }
 
-    # gateway
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
@@ -49,7 +47,6 @@ def generate_compose_q3(
         ],
     }
 
-    # filter_usd
     for i in range(n_filter_usd):
         services[f"filter_usd_{i}"] = {
             "build": {
@@ -72,7 +69,6 @@ def generate_compose_q3(
             ],
         }
 
-    # avg_joiner (arranca primero — sin dependencias de pipeline)
     for i in range(n_avg_joiner):
         services[f"avg_joiner_{i}"] = {
             "build": {
@@ -95,7 +91,6 @@ def generate_compose_q3(
             ],
         }
 
-    # avg (depende de avg_joiner para que bindee primero)
     avg_joiner_depends = {
         f"avg_joiner_{i}": {"condition": "service_started"} for i in range(n_avg_joiner)
     }
@@ -116,7 +111,6 @@ def generate_compose_q3(
             ],
         }
 
-    # split_date (depende de avg para que bindee al first_period_exchange primero)
     filter_usd_depends = {
         f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
@@ -148,7 +142,6 @@ def generate_compose_q3(
             ],
         }
 
-    # rabbitmq
     services["rabbitmq"] = {
         "build": {"context": "./src/", "dockerfile": "rabbitmq/Dockerfile"},
         "container_name": "rabbitmq",

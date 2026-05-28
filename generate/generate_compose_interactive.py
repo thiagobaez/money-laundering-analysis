@@ -43,9 +43,6 @@ def _dump(compose: dict, output: str):
     print(f"\nGenerado: {output}")
 
 
-# ---------------------------------------------------------------------------
-
-
 def _gen_q1():
     print("\n[ Query 1 — parametros ]")
     input_file = _ask("input_file", "HI-Medium_Trans.csv")
@@ -169,8 +166,6 @@ def _gen_all():
         output,
     )
 
-
-# ---------------------------------------------------------------------------
 
 _GENERATORS = {
     "1": _gen_q1,

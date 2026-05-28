@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-Genera un docker-compose con las 4 queries corriendo en simultaneo.
 
-El gateway usa un exchange directo (input_gateway_exchange) con 2 routing keys:
-  - "filter_usd"    → pool compartido que filtra USD y distribuye a q1/q3/q4
-  - "q5_filter_fmt" → workers de q5 (filtro de formato y fecha)
-
-NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_detect (q4) + 1 (q5)
-
-IMPORTANTE: og_detect, dt_detect y sg_detect deben tener el mismo número de workers
-porque cada sg_detect_i escucha exclusivamente en og_detect_{i+1}. Si difieren,
-los sg_detect sobrantes nunca reciben datos y el sistema se bloquea esperando sus EOFs.
-"""
 
 import yaml
 import argparse
@@ -19,23 +7,18 @@ import argparse
 
 def generate_compose_all(
     input_file: str,
-    # shared filter_usd (queries 1, 3, 4)
     n_filter_usd: int = 7,
     filter_usd_batch_size: int = 10000,
-    # q1
     q1_n_filter_amount: int = 3,
     q1_batch_size: int = 10000,
-    # q3
     q3_n_split_date: int = 3,
     q3_n_avg: int = 2,
     q3_n_avg_joiner: int = 5,
     q3_batch_size: int = 10000,
-    # q4
     q4_n_filter_date: int = 3,
     q4_n_split: int = 3,
     q4_n_detect: int = 3,
     q4_batch_size: int = 20000,
-    # q5
     q5_n_filter_fmt: int = 7,
     q5_n_converter: int = 3,
     q5_n_filter_amount: int = 2,
@@ -46,25 +29,17 @@ def generate_compose_all(
 
     num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_detect + 1
 
-    # -------------------------------------------------------------------------
-    # Routing keys para q4 (1-indexed)
-    # -------------------------------------------------------------------------
+ 
     q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
     q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
     q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_detect)])
     q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_detect)])
 
-    # -------------------------------------------------------------------------
-    # Routing keys para q3
-    # -------------------------------------------------------------------------
+
     q3_avg_joiner_rks = ",".join([f"avg_joiner_{i}" for i in range(q3_n_avg_joiner)])
     q3_avg_rks = ",".join([f"avg_queue_{i}" for i in range(q3_n_avg)])
 
-    # =========================================================================
-    # Q4 — empieza desde el fondo de la cadena
-    # =========================================================================
 
-    # q4_sg_detect
     for i in range(q4_n_detect):
         services[f"q4_sg_detect_{i}"] = {
             "build": {
@@ -91,7 +66,6 @@ def generate_compose_all(
             ],
         }
 
-    # q4_og_detect
     q4_sg_depends = {
         f"q4_sg_detect_{i}": {"condition": "service_started"}
         for i in range(q4_n_detect)
@@ -115,7 +89,6 @@ def generate_compose_all(
             ],
         }
 
-    # q4_dt_detect
     for i in range(q4_n_detect):
         services[f"q4_dt_detect_{i}"] = {
             "build": {
@@ -135,7 +108,6 @@ def generate_compose_all(
             ],
         }
 
-    # q4_split
     q4_og_depends = {
         f"q4_og_detect_{i}": {"condition": "service_started"}
         for i in range(q4_n_detect)
@@ -164,7 +136,6 @@ def generate_compose_all(
             ],
         }
 
-    # q4_filter_date — recibe USD de filter_usd compartido, filtra por fecha
     q4_split_depends = {
         f"q4_split_{i}": {"condition": "service_started"} for i in range(q4_n_split)
     }
@@ -189,11 +160,6 @@ def generate_compose_all(
             ],
         }
 
-    # =========================================================================
-    # Q1
-    # =========================================================================
-
-    # q1_filter_amount — recibe USD de filter_usd compartido, filtra por monto
     for i in range(q1_n_filter_amount):
         services[f"q1_filter_amount_{i}"] = {
             "build": {
@@ -217,11 +183,6 @@ def generate_compose_all(
             ],
         }
 
-    # =========================================================================
-    # Q3
-    # =========================================================================
-
-    # avg_joiner (arranca primero — sin dependencias de pipeline)
     for i in range(q3_n_avg_joiner):
         services[f"avg_joiner_{i}"] = {
             "build": {
@@ -244,7 +205,6 @@ def generate_compose_all(
             ],
         }
 
-    # avg (depende de avg_joiner para que bindee primero)
     avg_joiner_depends = {
         f"avg_joiner_{i}": {"condition": "service_started"}
         for i in range(q3_n_avg_joiner)
@@ -266,7 +226,6 @@ def generate_compose_all(
             ],
         }
 
-    # split_date — depende de avg para que bindee las avg_queue primero
     q3_avg_depends = {
         f"avg_{i}": {"condition": "service_started"} for i in range(q3_n_avg)
     }
@@ -296,11 +255,6 @@ def generate_compose_all(
             ],
         }
 
-    # =========================================================================
-    # Q5
-    # =========================================================================
-
-    # filter_q5_fmt (usa exchange con routing key propio)
     for i in range(q5_n_filter_fmt):
         services[f"filter_q5_fmt_{i}"] = {
             "build": {
@@ -326,7 +280,6 @@ def generate_compose_all(
             ],
         }
 
-    # converter
     q5_fmt_depends = {
         f"filter_q5_fmt_{i}": {"condition": "service_started"}
         for i in range(q5_n_filter_fmt)
@@ -350,7 +303,6 @@ def generate_compose_all(
             ],
         }
 
-    # filter_q5_amount
     q5_converter_depends = {
         f"converter_{i}": {"condition": "service_started"}
         for i in range(q5_n_converter)
@@ -375,11 +327,6 @@ def generate_compose_all(
             ],
         }
 
-    # =========================================================================
-    # Pool compartido filter_usd — queries 1, 3 y 4
-    # Lee del gateway via routing key "filter_usd", filtra USD y broadcastea
-    # las transacciones a los 3 pipelines downstream simultáneamente.
-    # =========================================================================
     q1_filter_amount_depends = {
         f"q1_filter_amount_{i}": {"condition": "service_started"}
         for i in range(q1_n_filter_amount)
@@ -418,9 +365,6 @@ def generate_compose_all(
             ],
         }
 
-    # =========================================================================
-    # client0 — depende de los workers de primera linea de cada query
-    # =========================================================================
     filter_usd_depends = {
         f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
@@ -444,9 +388,6 @@ def generate_compose_all(
         "volumes": ["./datasets:/datasets", "./output:/output"],
     }
 
-    # =========================================================================
-    # gateway
-    # =========================================================================
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
@@ -463,9 +404,6 @@ def generate_compose_all(
         ],
     }
 
-    # =========================================================================
-    # rabbitmq
-    # =========================================================================
     services["rabbitmq"] = {
         "build": {"context": "./src/", "dockerfile": "rabbitmq/Dockerfile"},
         "container_name": "rabbitmq",

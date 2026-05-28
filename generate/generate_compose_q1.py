@@ -12,8 +12,7 @@ def generate_compose_q1(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    # q1_filter_amount (arranca primero — gateway debe estar antes que ellos,
-    # y filter_usd debe arrancar despues para que las colas ya existan)
+
     for i in range(n_filter_amount):
         services[f"q1_filter_amount_{i}"] = {
             "build": {
@@ -37,7 +36,6 @@ def generate_compose_q1(
             ],
         }
 
-    # filter_usd (depende de q1_filter_amount para que bindeen primero)
     filter_amount_depends = {
         f"q1_filter_amount_{i}": {"condition": "service_started"}
         for i in range(n_filter_amount)
@@ -65,7 +63,6 @@ def generate_compose_q1(
             ],
         }
 
-    # client0 (depende de filter_usd para que todo el pipeline este listo)
     filter_usd_depends = {
         f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
@@ -83,7 +80,6 @@ def generate_compose_q1(
         "volumes": ["./datasets:/datasets", "./output:/output"],
     }
 
-    # gateway
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
@@ -100,7 +96,6 @@ def generate_compose_q1(
         ],
     }
 
-    # rabbitmq
     services["rabbitmq"] = {
         "build": {"context": "./src/", "dockerfile": "rabbitmq/Dockerfile"},
         "container_name": "rabbitmq",

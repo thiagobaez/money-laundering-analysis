@@ -13,7 +13,6 @@ def generate_compose(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    # client
     amount_depends = {
         f"filter_q5_amount_{i}": {"condition": "service_started"}
         for i in range(n_filter_amount)
@@ -38,7 +37,6 @@ def generate_compose(
         ],
     }
 
-    # gateway
     services["gateway"] = {
         "build": {
             "context": "./src/",
@@ -58,7 +56,6 @@ def generate_compose(
         ],
     }
 
-    # filter_q5_fmt
     for i in range(n_filter_fmt):
         services[f"filter_q5_fmt_{i}"] = {
             "build": {
@@ -83,7 +80,6 @@ def generate_compose(
             ],
         }
 
-    # converter
     fmt_depends = {
         f"filter_q5_fmt_{i}": {"condition": "service_started"}
         for i in range(n_filter_fmt)
@@ -110,7 +106,6 @@ def generate_compose(
             ],
         }
 
-    # filter_q5_amount
     converter_depends = {
         f"converter_{i}": {"condition": "service_started"} for i in range(n_converter)
     }
@@ -137,7 +132,6 @@ def generate_compose(
             ],
         }
 
-    # rabbitmq
     services["rabbitmq"] = {
         "build": {
             "context": "./src/",

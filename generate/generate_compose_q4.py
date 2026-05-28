@@ -14,7 +14,6 @@ def generate_compose_q4(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    # Routing keys (1-indexed)
     origin_routing_keys = ",".join([f"tx_origin_{i + 1}" for i in range(n_detect)])
     destination_routing_keys = ",".join(
         [f"tx_destination_{i + 1}" for i in range(n_detect)]
@@ -26,7 +25,6 @@ def generate_compose_q4(
         [f"sg_detect_{i + 1}" for i in range(n_detect)]
     )
 
-    # q4_sg_detect (los mas profundos — dependen del gateway)
     for i in range(n_detect):
         services[f"q4_sg_detect_{i}"] = {
             "build": {
@@ -52,7 +50,6 @@ def generate_compose_q4(
             ],
         }
 
-    # q4_og_detect (dependen de sg_detect para que bindeen primero)
     sg_detect_depends = {
         f"q4_sg_detect_{i}": {"condition": "service_started"}
         for i in range(n_detect)
@@ -79,7 +76,6 @@ def generate_compose_q4(
             ],
         }
 
-    # q4_dt_detect (dependen de sg_detect para que bindeen primero)
     for i in range(n_detect):
         services[f"q4_dt_detect_{i}"] = {
             "build": {
@@ -102,7 +98,6 @@ def generate_compose_q4(
             ],
         }
 
-    # q4_split (depende de og_detect y dt_detect para que bindeen primero)
     og_detect_depends = {
         f"q4_og_detect_{i}": {"condition": "service_started"}
         for i in range(n_detect)
@@ -135,7 +130,6 @@ def generate_compose_q4(
             ],
         }
 
-    # q4_filter_date (depende de q4_split para que bindee primero)
     split_depends = {
         f"q4_split_{i}": {"condition": "service_started"} for i in range(n_split)
     }
@@ -163,7 +157,6 @@ def generate_compose_q4(
             ],
         }
 
-    # filter_usd (depende de q4_filter_date para que bindee primero)
     filter_date_depends = {
         f"q4_filter_date_{i}": {"condition": "service_started"}
         for i in range(n_filter_date)
@@ -191,7 +184,6 @@ def generate_compose_q4(
             ],
         }
 
-    # client0 (depende de filter_usd — todo el pipeline ya esta listo)
     filter_usd_depends = {
         f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
@@ -209,7 +201,6 @@ def generate_compose_q4(
         "volumes": ["./datasets:/datasets", "./output:/output"],
     }
 
-    # gateway
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
         "container_name": "gateway",
@@ -226,7 +217,6 @@ def generate_compose_q4(
         ],
     }
 
-    # rabbitmq
     services["rabbitmq"] = {
         "build": {"context": "./src/", "dockerfile": "rabbitmq/Dockerfile"},
         "container_name": "rabbitmq",
