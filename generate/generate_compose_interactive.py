@@ -82,9 +82,7 @@ def _gen_q4():
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_filter_date = _ask("filter_date  (workers)", 3)
     n_split = _ask("split        (workers)", 3)
-    n_og_detect = _ask("og_detect    (workers)", 3)
-    n_dt_detect = _ask("dt_detect    (workers)", 3)
-    n_sg_detect = _ask("sg_detect    (workers)", 3)
+    n_detect = _ask("og/dt/sg_det (workers)", 3)
     batch_size = _ask("batch_size", 20000)
     output = _ask("output file", "docker-compose-q4.yaml")
     _dump(
@@ -93,9 +91,7 @@ def _gen_q4():
             n_filter_usd,
             n_filter_date,
             n_split,
-            n_og_detect,
-            n_dt_detect,
-            n_sg_detect,
+            n_detect,
             batch_size,
         ),
         output,
@@ -122,25 +118,24 @@ def _gen_all():
     print("\n[ Todas las queries — parametros ]")
     input_file = _ask("input_file", "HI-Medium_Trans.csv")
 
+    print("  -- filter_usd compartido (Q1/Q3/Q4) --")
+    n_filter_usd = _ask("  filter_usd   (workers)", 7)
+    filter_usd_batch_size = _ask("  batch_size", 10000)
+
     print("  -- Q1 --")
-    q1_n_filter_usd = _ask("  filter_usd   (workers)", 3)
     q1_n_filter_amount = _ask("  filter_amount (workers)", 3)
     q1_batch_size = _ask("  batch_size", 10000)
 
     print("  -- Q3 --")
-    q3_n_filter_usd = _ask("  filter_usd   (workers)", 3)
     q3_n_split_date = _ask("  split_date   (workers)", 3)
     q3_n_avg = _ask("  avg          (workers)", 2)
     q3_n_avg_joiner = _ask("  avg_joiner   (workers)", 5)
-    q3_batch_size = _ask("  batch_size", 1000)
+    q3_batch_size = _ask("  batch_size", 10000)
 
     print("  -- Q4 --")
-    q4_n_filter_usd = _ask("  filter_usd   (workers)", 3)
     q4_n_filter_date = _ask("  filter_date  (workers)", 3)
     q4_n_split = _ask("  split        (workers)", 3)
-    q4_n_og_detect = _ask("  og_detect    (workers)", 3)
-    q4_n_dt_detect = _ask("  dt_detect    (workers)", 3)
-    q4_n_sg_detect = _ask("  sg_detect    (workers)", 3)
+    q4_n_detect = _ask("  og/dt/sg_det (workers)", 3)
     q4_batch_size = _ask("  batch_size", 20000)
 
     print("  -- Q5 --")
@@ -154,20 +149,17 @@ def _gen_all():
     _dump(
         generate_compose_all(
             input_file=input_file,
-            q1_n_filter_usd=q1_n_filter_usd,
+            n_filter_usd=n_filter_usd,
+            filter_usd_batch_size=filter_usd_batch_size,
             q1_n_filter_amount=q1_n_filter_amount,
             q1_batch_size=q1_batch_size,
-            q3_n_filter_usd=q3_n_filter_usd,
             q3_n_split_date=q3_n_split_date,
             q3_n_avg=q3_n_avg,
             q3_n_avg_joiner=q3_n_avg_joiner,
             q3_batch_size=q3_batch_size,
-            q4_n_filter_usd=q4_n_filter_usd,
             q4_n_filter_date=q4_n_filter_date,
             q4_n_split=q4_n_split,
-            q4_n_og_detect=q4_n_og_detect,
-            q4_n_dt_detect=q4_n_dt_detect,
-            q4_n_sg_detect=q4_n_sg_detect,
+            q4_n_detect=q4_n_detect,
             q4_batch_size=q4_batch_size,
             q5_n_filter_fmt=q5_n_filter_fmt,
             q5_n_converter=q5_n_converter,

@@ -2,10 +2,15 @@
 """
 Genera un docker-compose con las 4 queries corriendo en simultaneo.
 
-El gateway usa un exchange directo (input_gateway_exchange) con 4 routing keys,
-una por query. Cada pipeline de query recibe su propio subconjunto de mensajes.
+El gateway usa un exchange directo (input_gateway_exchange) con 2 routing keys:
+  - "filter_usd"    → pool compartido que filtra USD y distribuye a q1/q3/q4
+  - "q5_filter_fmt" → workers de q5 (filtro de formato y fecha)
 
-NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_sg_detect (q4) + 1 (q5)
+NUM_EXPECTED_EOFS = 1 (q1) + q3_n_avg_joiner (q3) + q4_n_detect (q4) + 1 (q5)
+
+IMPORTANTE: og_detect, dt_detect y sg_detect deben tener el mismo número de workers
+porque cada sg_detect_i escucha exclusivamente en og_detect_{i+1}. Si difieren,
+los sg_detect sobrantes nunca reciben datos y el sistema se bloquea esperando sus EOFs.
 """
 
 import yaml
@@ -14,23 +19,21 @@ import argparse
 
 def generate_compose_all(
     input_file: str,
+    # shared filter_usd (queries 1, 3, 4)
+    n_filter_usd: int = 7,
+    filter_usd_batch_size: int = 10000,
     # q1
-    q1_n_filter_usd: int = 3,
     q1_n_filter_amount: int = 3,
     q1_batch_size: int = 10000,
     # q3
-    q3_n_filter_usd: int = 3,
     q3_n_split_date: int = 3,
     q3_n_avg: int = 2,
     q3_n_avg_joiner: int = 5,
-    q3_batch_size: int = 1000,
+    q3_batch_size: int = 10000,
     # q4
-    q4_n_filter_usd: int = 3,
     q4_n_filter_date: int = 3,
     q4_n_split: int = 3,
-    q4_n_og_detect: int = 3,
-    q4_n_dt_detect: int = 3,
-    q4_n_sg_detect: int = 3,
+    q4_n_detect: int = 3,
     q4_batch_size: int = 20000,
     # q5
     q5_n_filter_fmt: int = 7,
@@ -41,15 +44,15 @@ def generate_compose_all(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_sg_detect + 1
+    num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_detect + 1
 
     # -------------------------------------------------------------------------
     # Routing keys para q4 (1-indexed)
     # -------------------------------------------------------------------------
-    q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_og_detect)])
-    q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_dt_detect)])
-    q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_og_detect)])
-    q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_sg_detect)])
+    q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
+    q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
+    q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_detect)])
+    q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_detect)])
 
     # -------------------------------------------------------------------------
     # Routing keys para q3
@@ -62,7 +65,7 @@ def generate_compose_all(
     # =========================================================================
 
     # q4_sg_detect
-    for i in range(q4_n_sg_detect):
+    for i in range(q4_n_detect):
         services[f"q4_sg_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -82,17 +85,18 @@ def generate_compose_all(
                 f"DESTINATION_ROUTING_KEY=sg_detect_{i + 1}",
                 "OUTPUT_QUEUE=results_queue",
                 "MIN_COMMON=5",
-                f"NUM_OG_WORKERS={q4_n_og_detect}",
-                f"NUM_DT_WORKERS={q4_n_dt_detect}",
+                f"NUM_OG_WORKERS={q4_n_detect}",
+                f"NUM_DT_WORKERS={q4_n_detect}",
+                f"BATCH_SIZE={q4_batch_size}",
             ],
         }
 
     # q4_og_detect
     q4_sg_depends = {
         f"q4_sg_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_sg_detect)
+        for i in range(q4_n_detect)
     }
-    for i in range(q4_n_og_detect):
+    for i in range(q4_n_detect):
         services[f"q4_og_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -112,7 +116,7 @@ def generate_compose_all(
         }
 
     # q4_dt_detect
-    for i in range(q4_n_dt_detect):
+    for i in range(q4_n_detect):
         services[f"q4_dt_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -134,11 +138,11 @@ def generate_compose_all(
     # q4_split
     q4_og_depends = {
         f"q4_og_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_og_detect)
+        for i in range(q4_n_detect)
     }
     q4_dt_depends = {
         f"q4_dt_detect_{i}": {"condition": "service_started"}
-        for i in range(q4_n_dt_detect)
+        for i in range(q4_n_detect)
     }
     for i in range(q4_n_split):
         services[f"q4_split_{i}"] = {
@@ -160,7 +164,7 @@ def generate_compose_all(
             ],
         }
 
-    # q4_filter_date
+    # q4_filter_date — recibe USD de filter_usd compartido, filtra por fecha
     q4_split_depends = {
         f"q4_split_{i}": {"condition": "service_started"} for i in range(q4_n_split)
     }
@@ -185,36 +189,11 @@ def generate_compose_all(
             ],
         }
 
-    # q4_filter_usd (usa routing key propio para no mezclar con q1/q3)
-    q4_filter_date_depends = {
-        f"q4_filter_date_{i}": {"condition": "service_started"}
-        for i in range(q4_n_filter_date)
-    }
-    for i in range(q4_n_filter_usd):
-        services[f"q4_filter_usd_{i}"] = {
-            "build": {
-                "context": "./src/",
-                "dockerfile": "business/common_workers/filter/Dockerfile",
-            },
-            "container_name": f"q4_filter_usd_{i}",
-            "depends_on": {**dict(rabbitmq_healthy), **q4_filter_date_depends},
-            "environment": [
-                f"FILTER_AMOUNT={q4_n_filter_usd}",
-                "QUERY_NUMBER=1",
-                "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-                "INPUT_ROUTING_KEYS=q4_filter_usd",
-                "MOM_HOST=rabbitmq",
-                "OUTPUT_QUEUES=q4_filter_date",
-                "USD_ONLY=True",
-                f"BATCH_SIZE={q4_batch_size}",
-            ],
-        }
-
     # =========================================================================
     # Q1
     # =========================================================================
 
-    # q1_filter_amount
+    # q1_filter_amount — recibe USD de filter_usd compartido, filtra por monto
     for i in range(q1_n_filter_amount):
         services[f"q1_filter_amount_{i}"] = {
             "build": {
@@ -234,31 +213,6 @@ def generate_compose_all(
                 "OUTPUT_QUEUES=results_queue",
                 "MAX_AMOUNT=50",
                 "ADD_QUERY_ID=True",
-                f"BATCH_SIZE={q1_batch_size}",
-            ],
-        }
-
-    # q1_filter_usd
-    q1_filter_amount_depends = {
-        f"q1_filter_amount_{i}": {"condition": "service_started"}
-        for i in range(q1_n_filter_amount)
-    }
-    for i in range(q1_n_filter_usd):
-        services[f"q1_filter_usd_{i}"] = {
-            "build": {
-                "context": "./src/",
-                "dockerfile": "business/common_workers/filter/Dockerfile",
-            },
-            "container_name": f"q1_filter_usd_{i}",
-            "depends_on": {**dict(rabbitmq_healthy), **q1_filter_amount_depends},
-            "environment": [
-                f"FILTER_AMOUNT={q1_n_filter_usd}",
-                "QUERY_NUMBER=1",
-                "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-                "INPUT_ROUTING_KEYS=q1_filter_usd",
-                "MOM_HOST=rabbitmq",
-                "OUTPUT_QUEUES=q1_filter_amount",
-                "USD_ONLY=True",
                 f"BATCH_SIZE={q1_batch_size}",
             ],
         }
@@ -312,37 +266,9 @@ def generate_compose_all(
             ],
         }
 
-    # q3_filter_usd (usa exchange con routing key propio)
+    # split_date — depende de avg para que bindee las avg_queue primero
     q3_avg_depends = {
         f"avg_{i}": {"condition": "service_started"} for i in range(q3_n_avg)
-    }
-    for i in range(q3_n_filter_usd):
-        services[f"q3_filter_usd_{i}"] = {
-            "build": {
-                "context": "./src/",
-                "dockerfile": "business/common_workers/filter/Dockerfile",
-            },
-            "container_name": f"q3_filter_usd_{i}",
-            "depends_on": {
-                **dict(rabbitmq_healthy),
-                "gateway": {"condition": "service_started"},
-            },
-            "environment": [
-                "QUERY_NUMBER=3",
-                "MOM_HOST=rabbitmq",
-                "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-                "INPUT_ROUTING_KEYS=q3_filter_usd",
-                "OUTPUT_QUEUES=q3_split_queue",
-                f"FILTER_AMOUNT={q3_n_filter_usd}",
-                "USD_ONLY=True",
-                f"BATCH_SIZE={q3_batch_size}",
-            ],
-        }
-
-    # split_date (depende de q3_filter_usd y avg para que bindeen primero)
-    q3_filter_usd_depends = {
-        f"q3_filter_usd_{i}": {"condition": "service_started"}
-        for i in range(q3_n_filter_usd)
     }
     for i in range(q3_n_split_date):
         services[f"split_date_{i}"] = {
@@ -353,7 +279,6 @@ def generate_compose_all(
             "container_name": f"split_date_{i}",
             "depends_on": {
                 **dict(rabbitmq_healthy),
-                **q3_filter_usd_depends,
                 **q3_avg_depends,
             },
             "environment": [
@@ -451,32 +376,64 @@ def generate_compose_all(
         }
 
     # =========================================================================
+    # Pool compartido filter_usd — queries 1, 3 y 4
+    # Lee del gateway via routing key "filter_usd", filtra USD y broadcastea
+    # las transacciones a los 3 pipelines downstream simultáneamente.
+    # =========================================================================
+    q1_filter_amount_depends = {
+        f"q1_filter_amount_{i}": {"condition": "service_started"}
+        for i in range(q1_n_filter_amount)
+    }
+    split_date_depends = {
+        f"split_date_{i}": {"condition": "service_started"}
+        for i in range(q3_n_split_date)
+    }
+    q4_filter_date_depends = {
+        f"q4_filter_date_{i}": {"condition": "service_started"}
+        for i in range(q4_n_filter_date)
+    }
+    for i in range(n_filter_usd):
+        services[f"filter_usd_{i}"] = {
+            "build": {
+                "context": "./src/",
+                "dockerfile": "business/common_workers/filter/Dockerfile",
+            },
+            "container_name": f"filter_usd_{i}",
+            "depends_on": {
+                **dict(rabbitmq_healthy),
+                "gateway": {"condition": "service_started"},
+                **q1_filter_amount_depends,
+                **split_date_depends,
+                **q4_filter_date_depends,
+            },
+            "environment": [
+                f"FILTER_AMOUNT={n_filter_usd}",
+                "QUERY_NUMBER=0",
+                "INPUT_EXCHANGE_NAME=input_gateway_exchange",
+                "INPUT_ROUTING_KEYS=filter_usd",
+                "MOM_HOST=rabbitmq",
+                "OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date",
+                "USD_ONLY=True",
+                f"BATCH_SIZE={filter_usd_batch_size}",
+            ],
+        }
+
+    # =========================================================================
     # client0 — depende de los workers de primera linea de cada query
     # =========================================================================
-    q1_filter_usd_depends = {
-        f"q1_filter_usd_{i}": {"condition": "service_started"}
-        for i in range(q1_n_filter_usd)
+    filter_usd_depends = {
+        f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
-    q3_fu_depends = {
-        f"q3_filter_usd_{i}": {"condition": "service_started"}
-        for i in range(q3_n_filter_usd)
-    }
-    q4_filter_usd_depends = {
-        f"q4_filter_usd_{i}": {"condition": "service_started"}
-        for i in range(q4_n_filter_usd)
-    }
-    q5_amount_depends = {
-        f"filter_q5_amount_{i}": {"condition": "service_started"}
-        for i in range(q5_n_filter_amount)
+    q5_filter_fmt_depends_client = {
+        f"filter_q5_fmt_{i}": {"condition": "service_started"}
+        for i in range(q5_n_filter_fmt)
     }
     services["client0"] = {
         "container_name": "client",
         "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
         "depends_on": {
-            **q1_filter_usd_depends,
-            **q3_fu_depends,
-            **q4_filter_usd_depends,
-            **q5_amount_depends,
+            **filter_usd_depends,
+            **q5_filter_fmt_depends_client,
         },
         "environment": [
             "SERVER_HOST=gateway",
@@ -496,7 +453,7 @@ def generate_compose_all(
         "depends_on": dict(rabbitmq_healthy),
         "environment": [
             "INPUT_EXCHANGE_NAME=input_gateway_exchange",
-            "INPUT_ROUTING_KEYS=q1_filter_usd,q3_filter_usd,q4_filter_usd,q5_filter_fmt",
+            "INPUT_ROUTING_KEYS=filter_usd,q5_filter_fmt",
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
             f"NUM_EXPECTED_EOFS={num_expected_eofs}",
@@ -532,23 +489,21 @@ def main():
     )
     parser.add_argument("--input-file", type=str, default="HI-Medium_Trans.csv")
     parser.add_argument("--output", type=str, default="docker-compose-all.yaml")
+    # shared filter_usd
+    parser.add_argument("--filter-usd", type=int, default=3)
+    parser.add_argument("--filter-usd-batch-size", type=int, default=10000)
     # q1
-    parser.add_argument("--q1-filter-usd", type=int, default=3)
     parser.add_argument("--q1-filter-amount", type=int, default=3)
     parser.add_argument("--q1-batch-size", type=int, default=10000)
     # q3
-    parser.add_argument("--q3-filter-usd", type=int, default=3)
     parser.add_argument("--q3-split-date", type=int, default=3)
     parser.add_argument("--q3-avg", type=int, default=2)
     parser.add_argument("--q3-avg-joiner", type=int, default=5)
     parser.add_argument("--q3-batch-size", type=int, default=1000)
     # q4
-    parser.add_argument("--q4-filter-usd", type=int, default=3)
     parser.add_argument("--q4-filter-date", type=int, default=3)
     parser.add_argument("--q4-split", type=int, default=3)
-    parser.add_argument("--q4-og-detect", type=int, default=3)
-    parser.add_argument("--q4-dt-detect", type=int, default=3)
-    parser.add_argument("--q4-sg-detect", type=int, default=3)
+    parser.add_argument("--q4-detect", type=int, default=3)
     parser.add_argument("--q4-batch-size", type=int, default=20000)
     # q5
     parser.add_argument("--q5-filter-fmt", type=int, default=7)
@@ -559,20 +514,17 @@ def main():
 
     compose = generate_compose_all(
         input_file=args.input_file,
-        q1_n_filter_usd=args.q1_filter_usd,
+        n_filter_usd=args.filter_usd,
+        filter_usd_batch_size=args.filter_usd_batch_size,
         q1_n_filter_amount=args.q1_filter_amount,
         q1_batch_size=args.q1_batch_size,
-        q3_n_filter_usd=args.q3_filter_usd,
         q3_n_split_date=args.q3_split_date,
         q3_n_avg=args.q3_avg,
         q3_n_avg_joiner=args.q3_avg_joiner,
         q3_batch_size=args.q3_batch_size,
-        q4_n_filter_usd=args.q4_filter_usd,
         q4_n_filter_date=args.q4_filter_date,
         q4_n_split=args.q4_split,
-        q4_n_og_detect=args.q4_og_detect,
-        q4_n_dt_detect=args.q4_dt_detect,
-        q4_n_sg_detect=args.q4_sg_detect,
+        q4_n_detect=args.q4_detect,
         q4_batch_size=args.q4_batch_size,
         q5_n_filter_fmt=args.q5_filter_fmt,
         q5_n_converter=args.q5_converter,
@@ -589,17 +541,18 @@ def main():
             Dumper=yaml.SafeDumper,
         )
 
-    num_eofs = 1 + args.q3_avg_joiner + args.q4_sg_detect + 1
+    num_eofs = 1 + args.q3_avg_joiner + args.q4_detect + 1
     print(f"Generated {args.output} with:")
     print(f"  input_file:          {args.input_file}")
     print(
-        f"  Q1: filter_usd={args.q1_filter_usd}  filter_amount={args.q1_filter_amount}  batch={args.q1_batch_size}"
+        f"  Shared filter_usd:   {args.filter_usd} workers (batch={args.filter_usd_batch_size})"
+    )
+    print(f"  Q1: filter_amount={args.q1_filter_amount}  batch={args.q1_batch_size}")
+    print(
+        f"  Q3: split_date={args.q3_split_date}  avg={args.q3_avg}  avg_joiner={args.q3_avg_joiner}  batch={args.q3_batch_size}"
     )
     print(
-        f"  Q3: filter_usd={args.q3_filter_usd}  split_date={args.q3_split_date}  avg={args.q3_avg}  avg_joiner={args.q3_avg_joiner}  batch={args.q3_batch_size}"
-    )
-    print(
-        f"  Q4: filter_usd={args.q4_filter_usd}  filter_date={args.q4_filter_date}  split={args.q4_split}  og={args.q4_og_detect}  dt={args.q4_dt_detect}  sg={args.q4_sg_detect}  batch={args.q4_batch_size}"
+        f"  Q4: filter_date={args.q4_filter_date}  split={args.q4_split}  detect={args.q4_detect}  batch={args.q4_batch_size}"
     )
     print(
         f"  Q5: filter_fmt={args.q5_filter_fmt}  converter={args.q5_converter}  filter_amount={args.q5_filter_amount}  batch={args.q5_batch_size}"

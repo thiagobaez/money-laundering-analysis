@@ -8,28 +8,26 @@ def generate_compose_q4(
     n_filter_usd: int = 3,
     n_filter_date: int = 3,
     n_split: int = 3,
-    n_og_detect: int = 3,
-    n_dt_detect: int = 3,
-    n_sg_detect: int = 3,
+    n_detect: int = 3,
     batch_size: int = 20000,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    # Routing keys (1-indexed para coincidir con el compose sagrado)
-    origin_routing_keys = ",".join([f"tx_origin_{i + 1}" for i in range(n_og_detect)])
+    # Routing keys (1-indexed)
+    origin_routing_keys = ",".join([f"tx_origin_{i + 1}" for i in range(n_detect)])
     destination_routing_keys = ",".join(
-        [f"tx_destination_{i + 1}" for i in range(n_dt_detect)]
+        [f"tx_destination_{i + 1}" for i in range(n_detect)]
     )
     og_detect_routing_keys = ",".join(
-        [f"og_detect_{i + 1}" for i in range(n_og_detect)]
+        [f"og_detect_{i + 1}" for i in range(n_detect)]
     )
     sg_detect_routing_keys = ",".join(
-        [f"sg_detect_{i + 1}" for i in range(n_sg_detect)]
+        [f"sg_detect_{i + 1}" for i in range(n_detect)]
     )
 
     # q4_sg_detect (los mas profundos — dependen del gateway)
-    for i in range(n_sg_detect):
+    for i in range(n_detect):
         services[f"q4_sg_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -49,17 +47,17 @@ def generate_compose_q4(
                 f"DESTINATION_ROUTING_KEY=sg_detect_{i + 1}",
                 "OUTPUT_QUEUE=results_queue",
                 "MIN_COMMON=5",
-                f"NUM_OG_WORKERS={n_og_detect}",
-                f"NUM_DT_WORKERS={n_dt_detect}",
+                f"NUM_OG_WORKERS={n_detect}",
+                f"NUM_DT_WORKERS={n_detect}",
             ],
         }
 
     # q4_og_detect (dependen de sg_detect para que bindeen primero)
     sg_detect_depends = {
         f"q4_sg_detect_{i}": {"condition": "service_started"}
-        for i in range(n_sg_detect)
+        for i in range(n_detect)
     }
-    for i in range(n_og_detect):
+    for i in range(n_detect):
         services[f"q4_og_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -82,7 +80,7 @@ def generate_compose_q4(
         }
 
     # q4_dt_detect (dependen de sg_detect para que bindeen primero)
-    for i in range(n_dt_detect):
+    for i in range(n_detect):
         services[f"q4_dt_detect_{i}"] = {
             "build": {
                 "context": "./src/",
@@ -107,11 +105,11 @@ def generate_compose_q4(
     # q4_split (depende de og_detect y dt_detect para que bindeen primero)
     og_detect_depends = {
         f"q4_og_detect_{i}": {"condition": "service_started"}
-        for i in range(n_og_detect)
+        for i in range(n_detect)
     }
     dt_detect_depends = {
         f"q4_dt_detect_{i}": {"condition": "service_started"}
-        for i in range(n_dt_detect)
+        for i in range(n_detect)
     }
     for i in range(n_split):
         services[f"q4_split_{i}"] = {
@@ -221,7 +219,7 @@ def generate_compose_q4(
             "INPUT_ROUTING_KEYS=filter_usd",
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
-            f"NUM_EXPECTED_EOFS={n_sg_detect}",
+            f"NUM_EXPECTED_EOFS={n_detect}",
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
@@ -254,9 +252,7 @@ def main():
     parser.add_argument("--filter-usd", type=int, default=3)
     parser.add_argument("--filter-date", type=int, default=3)
     parser.add_argument("--split", type=int, default=3)
-    parser.add_argument("--og-detect", type=int, default=3)
-    parser.add_argument("--dt-detect", type=int, default=3)
-    parser.add_argument("--sg-detect", type=int, default=3)
+    parser.add_argument("--detect", type=int, default=3)
     args = parser.parse_args()
 
     compose = generate_compose_q4(
@@ -264,9 +260,7 @@ def main():
         n_filter_usd=args.filter_usd,
         n_filter_date=args.filter_date,
         n_split=args.split,
-        n_og_detect=args.og_detect,
-        n_dt_detect=args.dt_detect,
-        n_sg_detect=args.sg_detect,
+        n_detect=args.detect,
         batch_size=args.batch_size,
     )
 
@@ -284,9 +278,7 @@ def main():
     print(f"  filter_usd:    {args.filter_usd}")
     print(f"  filter_date:   {args.filter_date}")
     print(f"  split:         {args.split}")
-    print(f"  og_detect:     {args.og_detect}")
-    print(f"  dt_detect:     {args.dt_detect}")
-    print(f"  sg_detect:     {args.sg_detect}")
+    print(f"  detect:        {args.detect}")
     print(f"  batch_size:    {args.batch_size}")
 
 

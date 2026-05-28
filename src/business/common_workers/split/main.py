@@ -19,8 +19,8 @@ class Split:
     def __init__(self):
         self.closed = False
         self.eof_received_by_client = []
-        self._origin_batches = {}  # (client_id, routing_key) -> list of rows
-        self._dest_batches = {}  # (client_id, routing_key) -> list of rows
+        self._origin_batches = {}
+        self._dest_batches = {}
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -101,7 +101,6 @@ class Split:
                 ack()
                 return
 
-            # fields = [client_id, query_number, batch]
             for row in fields[2]:
                 tx = self._parse_transaction(row)
 

@@ -19,11 +19,8 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 class AvgJoiner:
     def __init__(self):
-        # Tracks which workers have claimed a slot in the second_period EOF chain.
         self.eof_seen: set[str] = set()
-        # Set once this joiner has received its share of the second_period EOF chain.
         self.sp_eof_done: set[str] = set()
-        # Set once all AVG_AMOUNT avg EOFs have been received for a client.
         self.avg_eof: set[str] = set()
         self.avg_eof_counts: dict[str, int] = {}
         self.avg_results: dict[str, dict[str, float]] = {}
@@ -33,8 +30,6 @@ class AvgJoiner:
         self.output_batches: dict[str, list] = {}
         self.spill_batches: dict[str, dict[str, list]] = {}
         self.spill_lock = threading.Lock()
-        # Protects sp_eof_done, avg_eof and the check-and-fire in _try_send_eof
-        # to prevent double-flush from two concurrent threads.
         self.eof_coord_lock = threading.Lock()
 
         self.second_period_consumer = middleware.MessageMiddlewareQueueRabbitMQ(
@@ -187,18 +182,12 @@ class AvgJoiner:
             self._flush_to_output(client_id, payment_format, avg)
 
     def _try_send_eof(self, client_id: str):
-        # Atomically claim the flush right. Both the second_period thread and the
-        # avg thread call this, so we must prevent a double-flush race.
         with self.eof_coord_lock:
             if client_id not in self.sp_eof_done or client_id not in self.avg_eof:
                 return
             self.sp_eof_done.discard(client_id)
             self.avg_eof.discard(client_id)
 
-        # Each joiner sends its own results + EOF so the gateway can count
-        # NUM_EXPECTED_EOFS=n_avg_joiner and only declare done once every joiner
-        # has finished sending its share. This prevents the race where a fast joiner's
-        # EOF causes the gateway to close the client before slower joiners finish.
         self._flush_all_spill_to_output(client_id)
         self._flush_output_batch(client_id)
         self._send_output(message_protocol.internal.serialize([client_id]))
@@ -227,16 +216,11 @@ class AvgJoiner:
                             )
                         )
 
-                    # Mark this joiner as done with second_period data.
-                    # All joiners flush and send their own EOF so the gateway waits
-                    # for every joiner before declaring the client done.
                     with self.eof_coord_lock:
                         self.sp_eof_done.add(client_id)
 
                     self._try_send_eof(client_id)
                 else:
-                    # This joiner already claimed its slot; pass the message along
-                    # unchanged so an unclaimed joiner can process it.
                     self.second_period_consumer.send(
                         message_protocol.internal.serialize([client_id, "EOF", counter])
                     )

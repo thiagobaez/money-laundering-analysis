@@ -75,7 +75,6 @@ class SplitDate:
         self._flush_second_batch(client_id)
 
     def _on_eof(self, client_id, counter):
-        # By the time this is called, batches have already been flushed in _on_message.
         eof = message_protocol.internal.serialize([client_id])
         logging.info(
             f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
@@ -83,12 +82,10 @@ class SplitDate:
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
             if counter > 1:
-                # Pass EOF along with decremented counter for another worker to claim.
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                # Last worker to claim: send downstream EOFs.
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] sending EOF downstream client={client_id}"
                 )
@@ -97,8 +94,6 @@ class SplitDate:
                 self.second_period_queue.send(eof)
                 self.eof_seen.discard(client_id)
         else:
-            # This worker already claimed its slot; pass the message unchanged so
-            # an unclaimed worker can process it.
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -113,8 +108,6 @@ class SplitDate:
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}"
                 )
-                # Flush pending batches before any EOF routing logic,
-                # so every worker sends its share regardless of the counter value it sees.
                 self._flush_all_batches(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 ack()

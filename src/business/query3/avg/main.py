@@ -12,7 +12,6 @@ OUTPUT_QUEUES = os.environ["OUTPUT_QUEUES"].split(",")
 
 class Avg:
     def __init__(self):
-        # {client_id: {payment_format: [sum, count]}}
         self.accum: dict[str, dict[str, list]] = {}
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
