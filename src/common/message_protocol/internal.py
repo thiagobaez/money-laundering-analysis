@@ -1,9 +1,10 @@
 import json
+import zlib
 
 
 def serialize(message):
-    return json.dumps(message).encode("utf-8")
+    return zlib.compress(json.dumps(message).encode("utf-8"))
 
 
 def deserialize(message):
-    return json.loads(message.decode("utf-8"))
+    return json.loads(zlib.decompress(message).decode("utf-8"))
