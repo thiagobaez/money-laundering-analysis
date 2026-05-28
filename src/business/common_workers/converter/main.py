@@ -1,6 +1,7 @@
 import os
 import logging
 import signal
+import time
 
 import requests
 
@@ -61,11 +62,16 @@ class Converter:
         if key in self._rate_lookup:
             return self._rate_lookup[key]
         url = f"{FRANKFURTER_BASE}/rates?base=USD&quotes={iso_code}&date={date_iso}"
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        rate = resp.json()[0]["rate"]
-        self._rate_lookup[key] = rate
-        return rate
+        while True:
+            try:
+                resp = requests.get(url, timeout=10)
+                resp.raise_for_status()
+                rate = resp.json()[0]["rate"]
+                self._rate_lookup[key] = rate
+                return rate
+            except Exception as e:
+                logging.warning("[CONVERTER] API error, retrying in 1s: %s", e)
+                time.sleep(1)
 
     def _to_usd_fields(self, tx: transaction_item.TransactionItem) -> list:
         if not tx.is_usd():
@@ -99,13 +105,9 @@ class Converter:
                 self._send_eof(client_id)
                 self.eof_seen.discard(client_id)
         else:
-            if counter > 1:
-                self.input_queue.send(
-                    message_protocol.internal.serialize([client_id, "EOF", counter])
-                )
-            else:
-                self._send_eof(client_id)
-                self.eof_seen.discard(client_id)
+            self.input_queue.send(
+                message_protocol.internal.serialize([client_id, "EOF", counter])
+            )
 
     def _on_message(self, message, ack, nack):
         try:

@@ -4,11 +4,11 @@ import argparse
 
 
 def generate_compose(
-    n_filter_fmt: int,
-    n_converter: int,
-    n_filter_amount: int,
-    input_file: str,
-    batch_size: int = 100,
+    n_filter_fmt: int = 7,
+    n_converter: int = 3,
+    n_filter_amount: int = 2,
+    input_file: str = "HI-Medium_Trans.csv",
+    batch_size: int = 10000,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -166,14 +166,14 @@ def generate_compose(
 def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q5.yaml")
 
-    parser.add_argument("--filter-fmt", type=int, default=2)
-    parser.add_argument("--converter", type=int, default=2)
+    parser.add_argument("--filter-fmt", type=int, default=7)
+    parser.add_argument("--converter", type=int, default=3)
     parser.add_argument("--filter-amount", type=int, default=2)
 
     parser.add_argument(
         "--input-file",
         type=str,
-        default="HI-Small_Trans.csv.gz",
+        default="HI-Medium_Trans.csv",
     )
 
     parser.add_argument(
@@ -185,7 +185,7 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=100,
+        default=10000,
     )
 
     args = parser.parse_args()

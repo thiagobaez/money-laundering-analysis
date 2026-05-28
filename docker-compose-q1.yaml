@@ -1,0 +1,169 @@
+services:
+  q1_filter_amount_0:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q1_filter_amount_0
+    depends_on:
+      rabbitmq: &id001
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - MOM_HOST=rabbitmq
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
+    - MAX_AMOUNT=50
+    - ADD_QUERY_ID=True
+    - BATCH_SIZE=10000
+  q1_filter_amount_1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q1_filter_amount_1
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - MOM_HOST=rabbitmq
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
+    - MAX_AMOUNT=50
+    - ADD_QUERY_ID=True
+    - BATCH_SIZE=10000
+  q1_filter_amount_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: q1_filter_amount_2
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - MOM_HOST=rabbitmq
+    - INPUT_QUEUE=q1_filter_amount
+    - OUTPUT_QUEUES=results_queue
+    - MAX_AMOUNT=50
+    - ADD_QUERY_ID=True
+    - BATCH_SIZE=10000
+  filter_usd_0:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_0
+    depends_on:
+      rabbitmq: *id001
+      q1_filter_amount_0: &id002
+        condition: service_started
+      q1_filter_amount_1: &id003
+        condition: service_started
+      q1_filter_amount_2: &id004
+        condition: service_started
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_1:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_1
+    depends_on:
+      rabbitmq: *id001
+      q1_filter_amount_0: *id002
+      q1_filter_amount_1: *id003
+      q1_filter_amount_2: *id004
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_2:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_2
+    depends_on:
+      rabbitmq: *id001
+      q1_filter_amount_0: *id002
+      q1_filter_amount_1: *id003
+      q1_filter_amount_2: *id004
+    environment:
+    - FILTER_AMOUNT=3
+    - QUERY_NUMBER=1
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  client0:
+    container_name: client
+    build:
+      context: ./src
+      dockerfile: client/Dockerfile
+    depends_on:
+      filter_usd_0:
+        condition: service_started
+      filter_usd_1:
+        condition: service_started
+      filter_usd_2:
+        condition: service_started
+    environment:
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
+    - OUTPUT_FILE=/output/client0/output.csv
+    - BATCH_SIZE=10000
+    volumes:
+    - ./datasets:/datasets
+    - ./output:/output
+  gateway:
+    build:
+      context: ./src/
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    depends_on:
+      rabbitmq: *id001
+    environment:
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUE=results_queue
+    - NUM_EXPECTED_EOFS=1
+    - PYTHONUNBUFFERED=1
+    - SERVER_HOST=gateway
+    - SERVER_PORT=5678
+  rabbitmq:
+    build:
+      context: ./src/
+      dockerfile: rabbitmq/Dockerfile
+    container_name: rabbitmq
+    environment:
+    - RABBITMQ_LOG_LEVELS=error
+    healthcheck:
+      interval: 5s
+      retries: 10
+      start_period: 50s
+      test: rabbitmq-diagnostics check_port_connectivity
+      timeout: 3s
+    ports:
+    - 5672:5672
+    - 15672:15672

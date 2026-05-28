@@ -84,7 +84,8 @@ class Avg:
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
-            self.output_exchange.close()
+            for q in self.output_queues:
+                q.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 

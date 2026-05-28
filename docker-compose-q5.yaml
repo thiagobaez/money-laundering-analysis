@@ -12,9 +12,9 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Medium_Trans.csv.gz
+    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
     volumes:
     - ./datasets:/datasets
     - ./output:/output
@@ -34,7 +34,7 @@ services:
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_0:
     build:
       context: ./src/
@@ -53,7 +53,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_1:
     build:
       context: ./src/
@@ -72,7 +72,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_2:
     build:
       context: ./src/
@@ -91,7 +91,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_3:
     build:
       context: ./src/
@@ -110,7 +110,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_4:
     build:
       context: ./src/
@@ -129,7 +129,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_5:
     build:
       context: ./src/
@@ -148,7 +148,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_fmt_6:
     build:
       context: ./src/
@@ -167,7 +167,7 @@ services:
     - GE_DATE=2022-09-01
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   converter_0:
     build:
       context: ./src/
@@ -196,7 +196,7 @@ services:
     - OUTPUT_QUEUE=filter_q5_amount_queue
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   converter_1:
     build:
       context: ./src/
@@ -218,7 +218,7 @@ services:
     - OUTPUT_QUEUE=filter_q5_amount_queue
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   converter_2:
     build:
       context: ./src/
@@ -240,7 +240,7 @@ services:
     - OUTPUT_QUEUE=filter_q5_amount_queue
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_amount_0:
     build:
       context: ./src/
@@ -262,7 +262,7 @@ services:
     - OUTPUT_QUEUES=results_queue
     - FILTER_AMOUNT=2
     - MAX_AMOUNT=1.0
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   filter_q5_amount_1:
     build:
       context: ./src/
@@ -281,7 +281,7 @@ services:
     - OUTPUT_QUEUES=results_queue
     - FILTER_AMOUNT=2
     - MAX_AMOUNT=1.0
-    - BATCH_SIZE=5000
+    - BATCH_SIZE=10000
   rabbitmq:
     build:
       context: ./src/

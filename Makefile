@@ -1,18 +1,16 @@
-.PHONY: all lint test-unit test-e2e up down logs switch
+.PHONY: all lint test-unit test-e2e up down logs switch generate
 
 COMPOSE_FILE := $(shell cat .compose 2>/dev/null || echo docker-compose.yaml)
 
 switch-query:
-	@printf "Seleccionar query a ejecutar:\n  A) Query 1\n  B) Query 3\n  C) Query 4\n  D) Query 5\n  E) Todas las queries (default)\nIngrese una opción: "; \
+	@files=$$(find . -maxdepth 1 -name "*.yaml" -printf "%f\n" | sort); \
+	if [ -z "$$files" ]; then echo "No se encontraron archivos .yaml"; exit 1; fi; \
+	echo "$$files" | awk '{print "  " NR ") " $$0}'; \
+	total=$$(echo "$$files" | wc -l | tr -d ' '); \
+	printf "Seleccionar compose [1-$$total]: "; \
 	read choice; \
-	case "$${choice:-E}" in \
-		[Aa]) selected="docker-compose-q1.yaml" ;; \
-		[Bb]) selected="docker-compose-q3.yaml" ;; \
-		[Cc]) selected="docker-compose-q4.yaml" ;; \
-		[Dd]) selected="docker-compose-q5.yaml" ;; \
-		[Ee]) selected="docker-compose.yaml" ;; \
-		*) echo "Opción inválida"; exit 1 ;; \
-	esac; \
+	selected=$$(echo "$$files" | sed -n "$${choice}p"); \
+	if [ -z "$$selected" ]; then echo "Opción inválida"; exit 1; fi; \
 	echo "$$selected" > .compose; \
 	echo "Usando: $$selected"
 
@@ -28,14 +26,6 @@ down:
 	docker compose -f $(COMPOSE_FILE) stop -t 5
 	docker compose -f $(COMPOSE_FILE) down -v --rmi all
 
-switch:
-	@echo Escenarios de prueba:
-	@echo "1) Un cliente, una sola réplica de cada elemento"
-	@echo "2) Un cliente, tres sola réplica de cada elemento"
-	@read -p "Selecciona uno [1-2]: " option;	\
-	cp ./scenarios/$${option}.yaml docker-compose.yaml
-.PHONY: switch
-
 logs:
 	docker compose -f $(COMPOSE_FILE) logs
 
@@ -49,3 +39,6 @@ test-unit:
 
 test-e2e:
 	pytest tests/e2e/ -v
+
+generate:
+	PYTHONPATH=generate python3 generate/generate_compose_interactive.py

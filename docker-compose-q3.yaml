@@ -9,7 +9,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Small_Trans.csv.gz
+    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
     - BATCH_SIZE=1000
     volumes:
@@ -27,7 +27,7 @@ services:
     - INPUT_QUEUE=filter_usd_queue
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - NUM_EXPECTED_EOFS=1
+    - NUM_EXPECTED_EOFS=5
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
@@ -96,8 +96,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - SECOND_PERIOD_QUEUE=second_period_queue
-    - AVG_EXCHANGE=avg_exchange
-    - AVG_ROUTING_KEY=avg_joiner_0
+    - AVG_QUEUE=avg_joiner_0
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
@@ -116,8 +115,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - SECOND_PERIOD_QUEUE=second_period_queue
-    - AVG_EXCHANGE=avg_exchange
-    - AVG_ROUTING_KEY=avg_joiner_1
+    - AVG_QUEUE=avg_joiner_1
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
@@ -136,8 +134,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - SECOND_PERIOD_QUEUE=second_period_queue
-    - AVG_EXCHANGE=avg_exchange
-    - AVG_ROUTING_KEY=avg_joiner_2
+    - AVG_QUEUE=avg_joiner_2
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
@@ -156,8 +153,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - SECOND_PERIOD_QUEUE=second_period_queue
-    - AVG_EXCHANGE=avg_exchange
-    - AVG_ROUTING_KEY=avg_joiner_3
+    - AVG_QUEUE=avg_joiner_3
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
@@ -176,8 +172,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - SECOND_PERIOD_QUEUE=second_period_queue
-    - AVG_EXCHANGE=avg_exchange
-    - AVG_ROUTING_KEY=avg_joiner_4
+    - AVG_QUEUE=avg_joiner_4
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
@@ -204,8 +199,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_0
-    - OUTPUT_EXCHANGE=avg_exchange
-    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
+    - OUTPUT_QUEUES=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
   avg_1:
     build:
@@ -223,8 +217,7 @@ services:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_1
-    - OUTPUT_EXCHANGE=avg_exchange
-    - OUTPUT_ROUTING_KEYS=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
+    - OUTPUT_QUEUES=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
   split_date_0:
     build:
@@ -252,7 +245,7 @@ services:
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
-    - SECOND_PERIOD_LE=2022-09-15
+    - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
   split_date_1:
@@ -276,7 +269,7 @@ services:
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
-    - SECOND_PERIOD_LE=2022-09-15
+    - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
   split_date_2:
@@ -300,7 +293,7 @@ services:
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
-    - SECOND_PERIOD_LE=2022-09-15
+    - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
   rabbitmq:
