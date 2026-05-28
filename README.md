@@ -8,6 +8,11 @@ Alumnos:
 
 Bajar los datasets de [Kaggle - IBM Transactions for Anti-Money Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml) y poner los archivos en el directorio `datasets/`.
 
+
+# Expected Output
+
+Bajar los [archivos de salida esperada](https://drive.google.com/drive/folders/1bOl9gDLcdXP1tUwwhLBHqjyLvgr9zjMQ?usp=sharing) y guardarlos dentro de la carpeta `expected` en el repositorio.
+
 ---
 
 ## Uso rápido
