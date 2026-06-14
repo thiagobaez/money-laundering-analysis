@@ -9,7 +9,7 @@ def generate_compose_q4(
     n_filter_date: int = 3,
     n_split: int = 3,
     n_detect: int = 3,
-    batch_size: int = 20000,
+    batch_size: int = 10000,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}

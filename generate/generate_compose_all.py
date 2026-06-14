@@ -18,7 +18,7 @@ def generate_compose_all(
     q4_n_filter_date: int = 3,
     q4_n_split: int = 3,
     q4_n_detect: int = 3,
-    q4_batch_size: int = 20000,
+    q4_batch_size: int = 10000,
     q5_n_filter_fmt: int = 7,
     q5_n_converter: int = 3,
     q5_n_filter_amount: int = 2,
