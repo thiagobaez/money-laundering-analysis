@@ -77,7 +77,7 @@ def handle_client_response(client_map, num_expected_eofs):
                 return
             client_id = deserialized[0]
             if client_id not in client_map:
-                nack()
+                ack()
                 return
             handler, client_socket = client_map[client_id]
             result = handler.deserialize_result(message)
@@ -105,8 +105,7 @@ def handle_client_response(client_map, num_expected_eofs):
             ack()
         except Exception as e:
             logging.error(e)
-            nack()
-            output_queue.stop_consuming()
+            ack()
 
     output_queue.start_consuming(_consume_result)
     output_queue.close()

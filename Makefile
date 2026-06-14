@@ -1,4 +1,4 @@
-.PHONY: lint compare up down logs switch generate
+.PHONY: lint compare up down logs switch generate which
 
 COMPOSE_FILE := $(shell cat .compose 2>/dev/null || echo docker-compose.yaml)
 
@@ -13,6 +13,9 @@ switch-query:
 	if [ -z "$$selected" ]; then echo "Opción inválida"; exit 1; fi; \
 	echo "$$selected" > .compose; \
 	echo "Usando: $$selected"
+
+which:
+	@echo "Usando: $(COMPOSE_FILE)"
 
 up:
 	@echo "Usando: $(COMPOSE_FILE)"

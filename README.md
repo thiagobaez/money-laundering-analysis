@@ -82,6 +82,13 @@ Si nunca se corrió make switch-query, busca docker-compose.yaml por defecto.
 
 ---
 
+### make which
+
+Indica cuál es el actual docker-compose utilizado para desplegar el sistema.
+
+
+---
+
 ### make up / make down / make logs
 
 make up construye las imágenes, levanta los contenedores y sigue los logs. Cuando el cliente termina escribe los resultados en output/client0/query{N}/.

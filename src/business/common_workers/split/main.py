@@ -86,8 +86,7 @@ class Split:
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
-            self.eof_received_by_client.remove(client_id)
-
+            
     def _on_message(self, message, ack, nack):
         if self.closed:
             ack()

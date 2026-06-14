@@ -5,6 +5,7 @@ Para cada parametro muestra el valor por defecto entre corchetes;
 presiona Enter para aceptarlo o escribe uno nuevo.
 """
 
+import os
 import sys
 import yaml
 
@@ -13,6 +14,18 @@ from generate_compose_q3 import generate_compose_q3
 from generate_compose_q4 import generate_compose_q4
 from generate_compose_q5 import generate_compose as generate_compose_q5
 from generate_compose_all import generate_compose_all
+
+_DATASETS_DIR = os.path.join(os.path.dirname(__file__), "..", "datasets")
+
+
+def _list_datasets() -> list:
+    try:
+        files = sorted(
+            f for f in os.listdir(_DATASETS_DIR) if os.path.isfile(os.path.join(_DATASETS_DIR, f))
+        )
+        return files
+    except FileNotFoundError:
+        return []
 
 
 def _ask(label: str, default):
@@ -31,6 +44,37 @@ def _ask(label: str, default):
         return default
 
 
+def _ask_file(label: str, default: str) -> str:
+    datasets = _list_datasets()
+    if datasets:
+        print(f"  Archivos disponibles en datasets/:")
+        for idx, name in enumerate(datasets, 1):
+            print(f"    {idx}) {name}")
+    try:
+        raw = input(f"  {label:<28} [{default}]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(0)
+    if raw == "":
+        return default
+    if raw.isdigit():
+        idx = int(raw) - 1
+        if 0 <= idx < len(datasets):
+            return datasets[idx]
+        print(f"    Numero invalido, se usa el default: {default}")
+        return default
+    return raw
+
+
+def _ask_input_files(default: str = "HI-Medium_Trans.csv") -> list:
+    n = _ask("n_clients", 1)
+    files = []
+    for i in range(n):
+        f = _ask_file(f"input_file client {i}", default)
+        files.append(f)
+    return files
+
+
 def _dump(compose: dict, output: str):
     with open(output, "w") as f:
         yaml.dump(
@@ -45,20 +89,20 @@ def _dump(compose: dict, output: str):
 
 def _gen_q1():
     print("\n[ Query 1 — parametros ]")
-    input_file = _ask("input_file", "HI-Medium_Trans.csv")
+    input_files = _ask_input_files("HI-Medium_Trans.csv")
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_filter_amount = _ask("filter_amount (workers)", 3)
     batch_size = _ask("batch_size", 10000)
     output = _ask("output file", "docker-compose-q1.yaml")
     _dump(
-        generate_compose_q1(input_file, n_filter_usd, n_filter_amount, batch_size),
+        generate_compose_q1(input_files, n_filter_usd, n_filter_amount, batch_size),
         output,
     )
 
 
 def _gen_q3():
     print("\n[ Query 3 — parametros ]")
-    input_file = _ask("input_file", "HI-Medium_Trans.csv")
+    input_files = _ask_input_files("HI-Medium_Trans.csv")
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_split_date = _ask("split_date   (workers)", 3)
     n_avg = _ask("avg          (workers)", 2)
@@ -67,7 +111,7 @@ def _gen_q3():
     output = _ask("output file", "docker-compose-q3.yaml")
     _dump(
         generate_compose_q3(
-            input_file, n_filter_usd, n_split_date, n_avg, n_avg_joiner, batch_size
+            input_files, n_filter_usd, n_split_date, n_avg, n_avg_joiner, batch_size
         ),
         output,
     )
@@ -75,7 +119,7 @@ def _gen_q3():
 
 def _gen_q4():
     print("\n[ Query 4 — parametros ]")
-    input_file = _ask("input_file", "HI-Medium_Trans.csv")
+    input_files = _ask_input_files("HI-Medium_Trans.csv")
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_filter_date = _ask("filter_date  (workers)", 3)
     n_split = _ask("split        (workers)", 3)
@@ -84,7 +128,7 @@ def _gen_q4():
     output = _ask("output file", "docker-compose-q4.yaml")
     _dump(
         generate_compose_q4(
-            input_file,
+            input_files,
             n_filter_usd,
             n_filter_date,
             n_split,
@@ -97,7 +141,7 @@ def _gen_q4():
 
 def _gen_q5():
     print("\n[ Query 5 — parametros ]")
-    input_file = _ask("input_file", "HI-Medium_Trans.csv")
+    input_files = _ask_input_files("HI-Medium_Trans.csv")
     n_filter_fmt = _ask("filter_fmt    (workers)", 7)
     n_converter = _ask("converter     (workers)", 3)
     n_filter_amount = _ask("filter_amount (workers)", 2)
@@ -105,7 +149,7 @@ def _gen_q5():
     output = _ask("output file", "docker-compose-q5.yaml")
     _dump(
         generate_compose_q5(
-            n_filter_fmt, n_converter, n_filter_amount, input_file, batch_size
+            n_filter_fmt, n_converter, n_filter_amount, input_files, batch_size
         ),
         output,
     )
@@ -113,7 +157,7 @@ def _gen_q5():
 
 def _gen_all():
     print("\n[ Todas las queries — parametros ]")
-    input_file = _ask("input_file", "HI-Medium_Trans.csv")
+    input_files = _ask_input_files("HI-Medium_Trans.csv")
 
     print("  -- filter_usd compartido (Q1/Q3/Q4) --")
     n_filter_usd = _ask("  filter_usd   (workers)", 7)
@@ -145,7 +189,7 @@ def _gen_all():
 
     _dump(
         generate_compose_all(
-            input_file=input_file,
+            input_files=input_files,
             n_filter_usd=n_filter_usd,
             filter_usd_batch_size=filter_usd_batch_size,
             q1_n_filter_amount=q1_n_filter_amount,

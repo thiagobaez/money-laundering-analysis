@@ -23,6 +23,7 @@ DATA_DIR = "/data"
 class SgDetect:
     def __init__(self):
         self.closed = False
+        self._lock = threading.Lock()
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.origins_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, ORIGIN_EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
@@ -33,9 +34,8 @@ class SgDetect:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
-        self.client_id = None
-        self.origins_eofs = 0
-        self.destinations_eofs = 0
+        self.origins_eofs: dict[str, int] = {}
+        self.destinations_eofs: dict[str, int] = {}
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -55,12 +55,14 @@ class SgDetect:
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
-            self.client_id = client_id
 
             if len(fields) == 2:
-                self.origins_eofs += 1
-                if self.origins_eofs >= NUM_OG_WORKERS:
-                    self.origins_queue.stop_consuming()
+                with self._lock:
+                    self.origins_eofs[client_id] = (
+                        self.origins_eofs.get(client_id, 0) + 1
+                    )
+                    if self.origins_eofs[client_id] >= NUM_OG_WORKERS:
+                        self._check_and_emit(client_id)
                 ack()
                 return
 
@@ -84,12 +86,14 @@ class SgDetect:
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
-            self.client_id = client_id
 
             if len(fields) == 2:
-                self.destinations_eofs += 1
-                if self.destinations_eofs >= NUM_DT_WORKERS:
-                    self.destinations_queue.stop_consuming()
+                with self._lock:
+                    self.destinations_eofs[client_id] = (
+                        self.destinations_eofs.get(client_id, 0) + 1
+                    )
+                    if self.destinations_eofs[client_id] >= NUM_DT_WORKERS:
+                        self._check_and_emit(client_id)
                 ack()
                 return
 
@@ -105,6 +109,24 @@ class SgDetect:
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing destination: {e}")
             nack()
+
+    def _check_and_emit(self, client_id):
+        """Called with self._lock held. Emits results when both origins and destinations EOFs are complete."""
+        og_done = self.origins_eofs.get(client_id, 0) >= NUM_OG_WORKERS
+        dt_done = self.destinations_eofs.get(client_id, 0) >= NUM_DT_WORKERS
+        if not (og_done and dt_done):
+            return
+
+        self._emit_results(client_id)
+
+        client_dir = os.path.join(DATA_DIR, str(client_id))
+        if os.path.exists(client_dir):
+            shutil.rmtree(client_dir)
+
+        del self.origins_eofs[client_id]
+        del self.destinations_eofs[client_id]
+
+        self.output_queue.send(message_protocol.internal.serialize([client_id]))
 
     def _emit_results(self, client_id):
         origins_dir = self._origins_dir(client_id)
@@ -140,7 +162,6 @@ class SgDetect:
             )
 
     def run(self):
-
         origins_thread = threading.Thread(
             target=self.origins_queue.start_consuming, args=(self._on_origins_message,)
         )
@@ -153,14 +174,6 @@ class SgDetect:
         destinations_thread.start()
         origins_thread.join()
         destinations_thread.join()
-
-        if not self.closed and self.client_id:
-            self._emit_results(self.client_id)
-            client_dir = os.path.join(DATA_DIR, str(self.client_id))
-            if os.path.exists(client_dir):
-                shutil.rmtree(client_dir)
-
-        self.output_queue.send(message_protocol.internal.serialize([self.client_id]))
 
     def close(self):
         try:

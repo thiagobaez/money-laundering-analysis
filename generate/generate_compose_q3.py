@@ -4,7 +4,7 @@ import argparse
 
 
 def generate_compose_q3(
-    input_file: str,
+    input_files: list,
     n_filter_usd: int = 1,
     n_split_date: int = 1,
     n_avg: int = 1,
@@ -17,19 +17,20 @@ def generate_compose_q3(
     avg_joiner_routing_keys = ",".join([f"avg_joiner_{i}" for i in range(n_avg_joiner)])
     avg_routing_keys = ",".join([f"avg_{i}" for i in range(n_avg)])
 
-    services["client0"] = {
-        "container_name": "client",
-        "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
-        "depends_on": ["gateway"],
-        "environment": [
-            "SERVER_HOST=gateway",
-            "SERVER_PORT=5678",
-            f"INPUT_FILE=/datasets/{input_file}",
-            "OUTPUT_FILE=/output/client0/output.csv",
-            f"BATCH_SIZE={batch_size}",
-        ],
-        "volumes": ["./datasets:/datasets", "./output:/output"],
-    }
+    for i, f in enumerate(input_files):
+        services[f"client{i}"] = {
+            "container_name": f"client{i}",
+            "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
+            "depends_on": ["gateway"],
+            "environment": [
+                "SERVER_HOST=gateway",
+                "SERVER_PORT=5678",
+                f"INPUT_FILE=/datasets/{f}",
+                f"OUTPUT_FILE=/output/client{i}/output.csv",
+                f"BATCH_SIZE={batch_size}",
+            ],
+            "volumes": ["./datasets:/datasets", "./output:/output"],
+        }
 
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
@@ -161,7 +162,7 @@ def generate_compose_q3(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q3.yaml")
-    parser.add_argument("--input-file", type=str, default="HI-Small_Trans.csv.gz")
+    parser.add_argument("--input-files", nargs="+", default=["HI-Small_Trans.csv.gz"])
     parser.add_argument("--output", type=str, default="docker-compose-q3.yaml")
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--filter-usd", type=int, default=1)
@@ -171,7 +172,7 @@ def main():
     args = parser.parse_args()
 
     compose = generate_compose_q3(
-        input_file=args.input_file,
+        input_files=args.input_files,
         n_filter_usd=args.filter_usd,
         n_split_date=args.split_date,
         n_avg=args.avg,
@@ -189,7 +190,7 @@ def main():
         )
 
     print(f"Generated {args.output} with:")
-    print(f"  input_file:    {args.input_file}")
+    print(f"  input_files:   {args.input_files}")
     print(f"  filter_usd:    {args.filter_usd}")
     print(f"  split_date:    {args.split_date}")
     print(f"  avg:           {args.avg}")

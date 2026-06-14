@@ -4,7 +4,7 @@ import argparse
 
 
 def generate_compose_q4(
-    input_file: str,
+    input_files: list,
     n_filter_usd: int = 3,
     n_filter_date: int = 3,
     n_split: int = 3,
@@ -187,19 +187,20 @@ def generate_compose_q4(
     filter_usd_depends = {
         f"filter_usd_{i}": {"condition": "service_started"} for i in range(n_filter_usd)
     }
-    services["client0"] = {
-        "container_name": "client",
-        "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
-        "depends_on": filter_usd_depends,
-        "environment": [
-            "SERVER_HOST=gateway",
-            "SERVER_PORT=5678",
-            f"INPUT_FILE=/datasets/{input_file}",
-            "OUTPUT_FILE=/output/client0/output.csv",
-            f"BATCH_SIZE={batch_size}",
-        ],
-        "volumes": ["./datasets:/datasets", "./output:/output"],
-    }
+    for i, f in enumerate(input_files):
+        services[f"client{i}"] = {
+            "container_name": f"client{i}",
+            "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
+            "depends_on": filter_usd_depends,
+            "environment": [
+                "SERVER_HOST=gateway",
+                "SERVER_PORT=5678",
+                f"INPUT_FILE=/datasets/{f}",
+                f"OUTPUT_FILE=/output/client{i}/output.csv",
+                f"BATCH_SIZE={batch_size}",
+            ],
+            "volumes": ["./datasets:/datasets", "./output:/output"],
+        }
 
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
@@ -236,7 +237,7 @@ def generate_compose_q4(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q4.yaml")
-    parser.add_argument("--input-file", type=str, default="HI-Medium_Trans.csv")
+    parser.add_argument("--input-files", nargs="+", default=["HI-Medium_Trans.csv"])
     parser.add_argument("--output", type=str, default="docker-compose-q4.yaml")
     parser.add_argument("--batch-size", type=int, default=20000)
     parser.add_argument("--filter-usd", type=int, default=3)
@@ -246,7 +247,7 @@ def main():
     args = parser.parse_args()
 
     compose = generate_compose_q4(
-        input_file=args.input_file,
+        input_files=args.input_files,
         n_filter_usd=args.filter_usd,
         n_filter_date=args.filter_date,
         n_split=args.split,
@@ -264,7 +265,7 @@ def main():
         )
 
     print(f"Generated {args.output} with:")
-    print(f"  input_file:    {args.input_file}")
+    print(f"  input_files:   {args.input_files}")
     print(f"  filter_usd:    {args.filter_usd}")
     print(f"  filter_date:   {args.filter_date}")
     print(f"  split:         {args.split}")

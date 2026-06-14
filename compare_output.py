@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
-
 import csv
 import os
 import sys
 from typing import Callable
 
-ACTUAL_BASE = "output/client0"
 EXPECTED_BASE = "expected"
 
 
@@ -125,18 +123,68 @@ QUERY_CONFIG = {
 }
 
 
-def compare_query(
-    query_num: int,
-    actual_base: str = ACTUAL_BASE,
-    expected_base: str = EXPECTED_BASE,
-) -> bool:
+def _load_clients_from_compose() -> list[dict]:
+    try:
+        compose_file = open(".compose").read().strip()
+    except FileNotFoundError:
+        print("[ERROR] No se encontró el archivo .compose")
+        sys.exit(1)
+
+    try:
+        import yaml
+    except ImportError:
+        print("[ERROR] PyYAML no está instalado. Instálalo con: pip install pyyaml")
+        sys.exit(1)
+
+    try:
+        with open(compose_file) as f:
+            compose = yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"[ERROR] No se encontró el compose file: {compose_file}")
+        sys.exit(1)
+
+    services = compose.get("services", {})
+    clients = []
+
+    for service_name, service in services.items():
+        env_list = service.get("environment", [])
+        input_file = None
+        output_file = None
+
+        for var in env_list:
+            if isinstance(var, str):
+                if var.startswith("INPUT_FILE="):
+                    input_file = var.split("=", 1)[1]
+                elif var.startswith("OUTPUT_FILE="):
+                    output_file = var.split("=", 1)[1]
+
+        if input_file and output_file:
+            dataset_name = os.path.basename(input_file)
+            output_dir = os.path.dirname(output_file).lstrip("/")
+            clients.append(
+                {
+                    "service": service_name,
+                    "dataset": dataset_name,
+                    "output_dir": output_dir,
+                    "expected_dir": os.path.join(EXPECTED_BASE, dataset_name),
+                }
+            )
+
+    if not clients:
+        print("[ERROR] No se encontraron clientes en el compose file")
+        sys.exit(1)
+
+    return clients
+
+
+def compare_query(query_num: int, actual_base: str, expected_base: str) -> bool:
     cfg = QUERY_CONFIG[query_num]
     actual_tx = os.path.join(actual_base, f"query{query_num}", "tx.csv")
     expected_tx = os.path.join(expected_base, f"query{query_num}_tx.csv")
     actual_count = os.path.join(actual_base, f"query{query_num}", "count.csv")
     expected_count = os.path.join(expected_base, f"query{query_num}_count.csv")
 
-    print(f"\n--- Query {query_num} ---")
+    print(f"\n  --- Query {query_num} ---")
     ok_count = _compare_count(actual_count, expected_count)
     ok_tx = _compare_query(
         actual_tx, expected_tx, query_num, cfg["row_key"], cfg["has_header"]
@@ -144,14 +192,19 @@ def compare_query(
     return ok_count and ok_tx
 
 
-def compare_all(
-    actual_base: str = ACTUAL_BASE,
-    expected_base: str = EXPECTED_BASE,
-) -> bool:
+def compare_client(client: dict, queries: list[int]) -> bool:
+    print(f"\n{'='*60}")
+    print(f"Cliente: {client['service']}  |  Dataset: {client['dataset']}")
+    print(f"  output:   {client['output_dir']}")
+    print(f"  expected: {client['expected_dir']}")
+
     all_ok = True
-    for query_num in QUERY_CONFIG:
-        ok = compare_query(query_num, actual_base, expected_base)
+    for q in queries:
+        ok = compare_query(q, client["output_dir"], client["expected_dir"])
         all_ok = all_ok and ok
+
+    status = "OK" if all_ok else "DIFERENCIAS"
+    print(f"\n  Resultado {client['service']}: {status}")
     return all_ok
 
 
@@ -170,17 +223,19 @@ def main():
         print(f"Opcion invalida: '{choice}'. Usa 1, 3, 4, 5 o all.")
         sys.exit(1)
 
+    clients = _load_clients_from_compose()
+
     all_ok = True
-    for q in queries:
-        ok = compare_query(q)
+    for client in clients:
+        ok = compare_client(client, queries)
         all_ok = all_ok and ok
 
-    print()
+    print(f"\n{'='*60}")
     if all_ok:
-        print("Resultado: TODAS LAS QUERIES COINCIDEN")
+        print("Resultado final: TODAS LAS QUERIES COINCIDEN")
         sys.exit(0)
     else:
-        print("Resultado: SE ENCONTRARON DIFERENCIAS")
+        print("Resultado final: SE ENCONTRARON DIFERENCIAS")
         sys.exit(1)
 
 

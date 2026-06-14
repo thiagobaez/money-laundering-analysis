@@ -7,7 +7,7 @@ def generate_compose(
     n_filter_fmt: int = 7,
     n_converter: int = 3,
     n_filter_amount: int = 2,
-    input_file: str = "HI-Medium_Trans.csv",
+    input_files: list = None,
     batch_size: int = 10000,
 ):
     services = {}
@@ -17,25 +17,28 @@ def generate_compose(
         f"filter_q5_amount_{i}": {"condition": "service_started"}
         for i in range(n_filter_amount)
     }
-    services["client0"] = {
-        "container_name": "client",
-        "build": {
-            "context": "./src",
-            "dockerfile": "client/Dockerfile",
-        },
-        "depends_on": amount_depends,
-        "environment": [
-            "SERVER_HOST=gateway",
-            "SERVER_PORT=5678",
-            f"INPUT_FILE=/datasets/{input_file}",
-            "OUTPUT_FILE=/output/client0/output.csv",
-            f"BATCH_SIZE={batch_size}",
-        ],
-        "volumes": [
-            "./datasets:/datasets",
-            "./output:/output",
-        ],
-    }
+    if input_files is None:
+        input_files = ["HI-Medium_Trans.csv"]
+    for i, f in enumerate(input_files):
+        services[f"client{i}"] = {
+            "container_name": f"client{i}",
+            "build": {
+                "context": "./src",
+                "dockerfile": "client/Dockerfile",
+            },
+            "depends_on": amount_depends,
+            "environment": [
+                "SERVER_HOST=gateway",
+                "SERVER_PORT=5678",
+                f"INPUT_FILE=/datasets/{f}",
+                f"OUTPUT_FILE=/output/client{i}/output.csv",
+                f"BATCH_SIZE={batch_size}",
+            ],
+            "volumes": [
+                "./datasets:/datasets",
+                "./output:/output",
+            ],
+        }
 
     services["gateway"] = {
         "build": {
@@ -165,9 +168,9 @@ def main():
     parser.add_argument("--filter-amount", type=int, default=2)
 
     parser.add_argument(
-        "--input-file",
-        type=str,
-        default="HI-Medium_Trans.csv",
+        "--input-files",
+        nargs="+",
+        default=["HI-Medium_Trans.csv"],
     )
 
     parser.add_argument(
@@ -188,7 +191,7 @@ def main():
         n_filter_fmt=args.filter_fmt,
         n_converter=args.converter,
         n_filter_amount=args.filter_amount,
-        input_file=args.input_file,
+        input_files=args.input_files,
         batch_size=args.batch_size,
     )
 

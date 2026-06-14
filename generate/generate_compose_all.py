@@ -6,7 +6,7 @@ import argparse
 
 
 def generate_compose_all(
-    input_file: str,
+    input_files: list,
     n_filter_usd: int = 7,
     filter_usd_batch_size: int = 10000,
     q1_n_filter_amount: int = 3,
@@ -372,21 +372,22 @@ def generate_compose_all(
         f"filter_q5_fmt_{i}": {"condition": "service_started"}
         for i in range(q5_n_filter_fmt)
     }
-    services["client0"] = {
-        "container_name": "client",
-        "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
-        "depends_on": {
-            **filter_usd_depends,
-            **q5_filter_fmt_depends_client,
-        },
-        "environment": [
-            "SERVER_HOST=gateway",
-            "SERVER_PORT=5678",
-            f"INPUT_FILE=/datasets/{input_file}",
-            "OUTPUT_FILE=/output/client0/output.csv",
-        ],
-        "volumes": ["./datasets:/datasets", "./output:/output"],
-    }
+    for i, f in enumerate(input_files):
+        services[f"client{i}"] = {
+            "container_name": f"client{i}",
+            "build": {"context": "./src", "dockerfile": "client/Dockerfile"},
+            "depends_on": {
+                **filter_usd_depends,
+                **q5_filter_fmt_depends_client,
+            },
+            "environment": [
+                "SERVER_HOST=gateway",
+                "SERVER_PORT=5678",
+                f"INPUT_FILE=/datasets/{f}",
+                f"OUTPUT_FILE=/output/client{i}/output.csv",
+            ],
+            "volumes": ["./datasets:/datasets", "./output:/output"],
+        }
 
     services["gateway"] = {
         "build": {"context": "./src/", "dockerfile": "gateway/Dockerfile"},
@@ -425,7 +426,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate docker-compose-all.yaml (queries 1+3+4+5)"
     )
-    parser.add_argument("--input-file", type=str, default="HI-Medium_Trans.csv")
+    parser.add_argument("--input-files", nargs="+", default=["HI-Medium_Trans.csv"])
     parser.add_argument("--output", type=str, default="docker-compose-all.yaml")
     # shared filter_usd
     parser.add_argument("--filter-usd", type=int, default=3)
@@ -451,7 +452,7 @@ def main():
     args = parser.parse_args()
 
     compose = generate_compose_all(
-        input_file=args.input_file,
+        input_files=args.input_files,
         n_filter_usd=args.filter_usd,
         filter_usd_batch_size=args.filter_usd_batch_size,
         q1_n_filter_amount=args.q1_filter_amount,
@@ -481,7 +482,7 @@ def main():
 
     num_eofs = 1 + args.q3_avg_joiner + args.q4_detect + 1
     print(f"Generated {args.output} with:")
-    print(f"  input_file:          {args.input_file}")
+    print(f"  input_files:         {args.input_files}")
     print(
         f"  Shared filter_usd:   {args.filter_usd} workers (batch={args.filter_usd_batch_size})"
     )
