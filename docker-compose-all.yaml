@@ -381,7 +381,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_0
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   avg_joiner_1:
     build:
       context: ./src/
@@ -400,7 +400,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_1
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   avg_joiner_2:
     build:
       context: ./src/
@@ -419,7 +419,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_2
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   avg_joiner_3:
     build:
       context: ./src/
@@ -438,7 +438,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   avg_joiner_4:
     build:
       context: ./src/
@@ -457,7 +457,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_4
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   avg_0:
     build:
       context: ./src/
@@ -521,7 +521,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   split_date_1:
     build:
       context: ./src/
@@ -542,7 +542,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   split_date_2:
     build:
       context: ./src/
@@ -563,7 +563,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
   filter_q5_fmt_0:
     build:
       context: ./src/
@@ -846,7 +846,7 @@ services:
       q4_filter_date_2: &id039
         condition: service_started
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -873,7 +873,7 @@ services:
       q4_filter_date_1: *id038
       q4_filter_date_2: *id039
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -900,7 +900,115 @@ services:
       q4_filter_date_1: *id038
       q4_filter_date_2: *id039
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_3
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_4:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_4
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_5:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_5
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+  filter_usd_6:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_6
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    environment:
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -909,7 +1017,7 @@ services:
     - USD_ONLY=True
     - BATCH_SIZE=10000
   client0:
-    container_name: client
+    container_name: client0
     build:
       context: ./src
       dockerfile: client/Dockerfile
@@ -919,6 +1027,14 @@ services:
       filter_usd_1:
         condition: service_started
       filter_usd_2:
+        condition: service_started
+      filter_usd_3:
+        condition: service_started
+      filter_usd_4:
+        condition: service_started
+      filter_usd_5:
+        condition: service_started
+      filter_usd_6:
         condition: service_started
       filter_q5_fmt_0:
         condition: service_started
@@ -974,3 +1090,15 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
+  chaos_monkey:
+    build:
+      context: ./src/
+      dockerfile: chaos_monkey/Dockerfile
+    container_name: chaos_monkey
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - KILL_INTERVAL=10
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0
+    depends_on:
+      rabbitmq: *id001

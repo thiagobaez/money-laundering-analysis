@@ -44,6 +44,23 @@ def _ask(label: str, default):
         return default
 
 
+def _ask_bool(label: str, default: bool) -> bool:
+    default_str = "s" if default else "n"
+    try:
+        raw = input(f"  {label:<28} [s/n, default={default_str}]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(0)
+    if raw == "":
+        return default
+    if raw in ("s", "si", "y", "yes"):
+        return True
+    if raw in ("n", "no"):
+        return False
+    print(f"    Valor invalido, se usa el default: {default_str}")
+    return default
+
+
 def _ask_file(label: str, default: str) -> str:
     datasets = _list_datasets()
     if datasets:
@@ -185,6 +202,12 @@ def _gen_all():
     q5_n_filter_amount = _ask("  filter_amount (workers)", 2)
     q5_batch_size = _ask("  batch_size", 10000)
 
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
     output = _ask("output file", "docker-compose-all.yaml")
 
     _dump(
@@ -206,6 +229,8 @@ def _gen_all():
             q5_n_converter=q5_n_converter,
             q5_n_filter_amount=q5_n_filter_amount,
             q5_batch_size=q5_batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
         ),
         output,
     )

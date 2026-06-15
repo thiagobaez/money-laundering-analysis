@@ -111,6 +111,16 @@ make compare abre el script de comparación para elegir qué query verificar. Co
 make lint 
 ```
 
+---
+
+### chaos monkey
+
+Al generar con `make generate` y elegir `all`, al final pregunta si querés agregar el chaos monkey y con qué intervalo (en segundos). Si lo activás, se agrega un container que mata workers al azar cada N segundos para testear tolerancia a fallos.
+
+Por defecto excluye rabbitmq, el propio chaos monkey y los clientes. El resto de los workers son candidatos.
+
+Para que funcione el container necesita acceso al socket de docker, que se monta automáticamente cuando se genera el compose con esta opción.
+
 
 
 ## Queries

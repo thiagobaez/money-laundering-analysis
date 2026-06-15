@@ -23,6 +23,8 @@ def generate_compose_all(
     q5_n_converter: int = 3,
     q5_n_filter_amount: int = 2,
     q5_batch_size: int = 10000,
+    chaos_monkey: bool = False,
+    chaos_kill_interval: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -419,6 +421,19 @@ def generate_compose_all(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if chaos_monkey:
+        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        services["chaos_monkey"] = {
+            "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
+            "container_name": "chaos_monkey",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                f"KILL_INTERVAL={chaos_kill_interval}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
     return {"services": services}
 
 
@@ -449,6 +464,8 @@ def main():
     parser.add_argument("--q5-converter", type=int, default=3)
     parser.add_argument("--q5-filter-amount", type=int, default=2)
     parser.add_argument("--q5-batch-size", type=int, default=10000)
+    parser.add_argument("--chaos-monkey", action="store_true", default=False)
+    parser.add_argument("--chaos-kill-interval", type=int, default=30)
     args = parser.parse_args()
 
     compose = generate_compose_all(
@@ -469,6 +486,8 @@ def main():
         q5_n_converter=args.q5_converter,
         q5_n_filter_amount=args.q5_filter_amount,
         q5_batch_size=args.q5_batch_size,
+        chaos_monkey=args.chaos_monkey,
+        chaos_kill_interval=args.chaos_kill_interval,
     )
 
     with open(args.output, "w") as f:
