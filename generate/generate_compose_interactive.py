@@ -208,6 +208,12 @@ def _gen_all():
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
 
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-all.yaml")
 
     _dump(
@@ -231,6 +237,8 @@ def _gen_all():
             q5_batch_size=q5_batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
         ),
         output,
     )

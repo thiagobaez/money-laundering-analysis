@@ -3,10 +3,11 @@ import logging
 import signal
 import hashlib
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEYS = os.environ["ORIGIN_ROUTING_KEYS"].split(",")
@@ -21,13 +22,39 @@ class Split:
         self.eof_received_by_client = []
         self._origin_batches = {}
         self._dest_batches = {}
+        self._last_msg_hash: str | None = None
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._load_checkpoint()
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
         )
         self.output_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS
         )
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.eof_received_by_client = state.get("eof_received_by_client", [])
+        self._origin_batches = {
+            tuple(k.split("|||", 1)): v
+            for k, v in state.get("origin_batches", {}).items()
+        }
+        self._dest_batches = {
+            tuple(k.split("|||", 1)): v
+            for k, v in state.get("dest_batches", {}).items()
+        }
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(DATA_DIR, {
+            "last_msg_hash": self._last_msg_hash,
+            "eof_received_by_client": self.eof_received_by_client,
+            "origin_batches": {f"{k[0]}|||{k[1]}": v for k, v in self._origin_batches.items()},
+            "dest_batches": {f"{k[0]}|||{k[1]}": v for k, v in self._dest_batches.items()},
+        })
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -92,11 +119,18 @@ class Split:
             ack()
             return
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
                 self._on_eof(client_id, self._get_eof_counter(fields))
+                self._last_msg_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -126,6 +160,8 @@ class Split:
                 if len(dest_batch) >= BATCH_SIZE:
                     self._flush_dest_batch(client_id, dest_key)
 
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
@@ -147,6 +183,8 @@ class Split:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
+    from common.heartbeat import start_if_configured
+    start_if_configured()
     worker = Split()
     try:
         worker.run()

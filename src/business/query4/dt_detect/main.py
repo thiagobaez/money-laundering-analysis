@@ -4,6 +4,8 @@ import logging
 import signal
 
 from common import middleware, message_protocol
+from common.heartbeat import start_if_configured
+
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -119,6 +121,7 @@ class DtDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
+    start_if_configured()
     worker = DtDetect()
     try:
         worker.run()

@@ -4,10 +4,11 @@ import logging
 import signal
 import threading
 
-from common import middleware, message_protocol
+from common import middleware, message_protocol, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 ORIGIN_EXCHANGE_NAME = os.environ["ORIGIN_EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 DESTINATION_EXCHANGE_NAME = os.environ["DESTINATION_EXCHANGE_NAME"]
@@ -16,8 +17,6 @@ OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_COMMON = int(os.environ["MIN_COMMON"])
 NUM_OG_WORKERS = int(os.environ.get("NUM_OG_WORKERS", "1"))
 NUM_DT_WORKERS = int(os.environ.get("NUM_DT_WORKERS", "1"))
-
-DATA_DIR = "/data"
 
 
 class SgDetect:
@@ -36,6 +35,28 @@ class SgDetect:
         )
         self.origins_eofs: dict[str, int] = {}
         self.destinations_eofs: dict[str, int] = {}
+        self._last_origins_hash: str | None = None
+        self._last_destinations_hash: str | None = None
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_origins_hash = state.get("last_origins_hash")
+        self._last_destinations_hash = state.get("last_destinations_hash")
+        self.origins_eofs = state.get("origins_eofs", {})
+        self.destinations_eofs = state.get("destinations_eofs", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        with self._lock:
+            checkpoint.save(DATA_DIR, {
+                "last_origins_hash": self._last_origins_hash,
+                "last_destinations_hash": self._last_destinations_hash,
+                "origins_eofs": self.origins_eofs,
+                "destinations_eofs": self.destinations_eofs,
+            })
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -53,6 +74,11 @@ class SgDetect:
             ack()
             return
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_origins_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -63,6 +89,8 @@ class SgDetect:
                     )
                     if self.origins_eofs[client_id] >= NUM_OG_WORKERS:
                         self._check_and_emit(client_id)
+                self._last_origins_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -84,6 +112,11 @@ class SgDetect:
             ack()
             return
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_destinations_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -94,6 +127,8 @@ class SgDetect:
                     )
                     if self.destinations_eofs[client_id] >= NUM_DT_WORKERS:
                         self._check_and_emit(client_id)
+                self._last_destinations_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -190,6 +225,8 @@ class SgDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
+    from common.heartbeat import start_if_configured
+    start_if_configured()
     worker = SgDetect()
     try:
         worker.run()

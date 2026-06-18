@@ -5,6 +5,8 @@ import signal
 import hashlib
 
 from common import middleware, message_protocol
+from common.heartbeat import start_if_configured
+
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -125,6 +127,7 @@ class OgDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
+    start_if_configured()
     worker = OgDetect()
     try:
         worker.run()

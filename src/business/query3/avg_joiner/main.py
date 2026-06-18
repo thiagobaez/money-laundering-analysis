@@ -4,14 +4,14 @@ import logging
 import signal
 import threading
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 SECOND_PERIOD_QUEUE = os.environ["SECOND_PERIOD_QUEUE"]
 AVG_QUEUE = os.environ["AVG_QUEUE"]
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
-DATA_DIR = os.environ.get("DATA_DIR", "/data")
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "1"))
 AVG_AMOUNT = int(os.environ.get("AVG_AMOUNT", "1"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
@@ -42,6 +42,35 @@ class AvgJoiner:
             MOM_HOST, OUTPUT_QUEUE
         )
         self.output_lock = threading.Lock()
+        self._checkpoint_lock = threading.Lock()
+        self._last_sp_hash: str | None = None
+        self._last_avg_hash: str | None = None
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_sp_hash = state.get("last_sp_hash")
+        self._last_avg_hash = state.get("last_avg_hash")
+        self.eof_seen = set(state.get("eof_seen", []))
+        self.sp_eof_done = set(state.get("sp_eof_done", []))
+        self.avg_eof = set(state.get("avg_eof", []))
+        self.avg_eof_counts = state.get("avg_eof_counts", {})
+        self.avg_results = state.get("avg_results", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [AVG_JOINER] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        with self._checkpoint_lock:
+            checkpoint.save(DATA_DIR, {
+                "last_sp_hash": self._last_sp_hash,
+                "last_avg_hash": self._last_avg_hash,
+                "eof_seen": list(self.eof_seen),
+                "sp_eof_done": list(self.sp_eof_done),
+                "avg_eof": list(self.avg_eof),
+                "avg_eof_counts": self.avg_eof_counts,
+                "avg_results": self.avg_results,
+            })
 
     def _get_file_lock(self, client_id: str, payment_format: str) -> threading.Lock:
         key = (client_id, payment_format)
@@ -198,6 +227,11 @@ class AvgJoiner:
     def _on_second_period_message(self, message, ack, nack):
         logging.info(f"[QUERY {QUERY_NUMBER}] Received second period message")
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_sp_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -224,6 +258,8 @@ class AvgJoiner:
                     self.second_period_consumer.send(
                         message_protocol.internal.serialize([client_id, "EOF", counter])
                     )
+                self._last_sp_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -245,6 +281,8 @@ class AvgJoiner:
 
             self._append_output_rows(client_id, output_batch)
 
+            self._last_sp_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(
@@ -255,6 +293,11 @@ class AvgJoiner:
     def _on_avg_message(self, message, ack, nack):
         logging.info(f"[QUERY {QUERY_NUMBER}] Received avg message")
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_avg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -264,12 +307,16 @@ class AvgJoiner:
                     self.avg_eof_counts.get(client_id, 0) + 1
                 )
                 if self.avg_eof_counts[client_id] < AVG_AMOUNT:
+                    self._last_avg_hash = h
+                    self._save_checkpoint()
                     ack()
                     return
                 del self.avg_eof_counts[client_id]
                 with self.eof_coord_lock:
                     self.avg_eof.add(client_id)
                 self._try_send_eof(client_id)
+                self._last_avg_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -286,6 +333,8 @@ class AvgJoiner:
 
                 self._flush_to_output(client_id, payment_format, avg)
 
+            self._last_avg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing avg message: {e}")
@@ -314,6 +363,8 @@ class AvgJoiner:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
+    from common.heartbeat import start_if_configured
+    start_if_configured()
     worker = AvgJoiner()
     signal.signal(signal.SIGTERM, lambda s, f: worker.stop())
     try:

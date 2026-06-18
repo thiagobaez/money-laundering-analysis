@@ -2,10 +2,11 @@ import os
 import logging
 import signal
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 
 INPUT_QUEUE = os.environ.get("INPUT_QUEUE")
 OUTPUT_QUEUES = (
@@ -47,6 +48,7 @@ class Filter:
         self.eof_seen: set[str] = set()
         self.batches: dict[str, list] = {}
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._last_msg_hash: str | None = None
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -72,6 +74,23 @@ class Filter:
             raise ValueError(
                 "Must define OUTPUT_QUEUES or OUTPUT_EXCHANGE_NAME+OUTPUT_ROUTING_KEYS"
             )
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.eof_seen = set(state.get("eof_seen", []))
+        self.batches = state.get("batches", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(DATA_DIR, {
+            "last_msg_hash": self._last_msg_hash,
+            "eof_seen": list(self.eof_seen),
+            "batches": self.batches,
+        })
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -135,12 +154,19 @@ class Filter:
 
     def _on_message(self, message, ack, nack):
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
                 self._flush_batch(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
+                self._last_msg_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -153,6 +179,8 @@ class Filter:
                     if len(self.batches[client_id]) >= BATCH_SIZE:
                         self._flush_batch(client_id)
 
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
@@ -175,6 +203,8 @@ class Filter:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
+    from common.heartbeat import start_if_configured
+    start_if_configured()
     worker = Filter()
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:

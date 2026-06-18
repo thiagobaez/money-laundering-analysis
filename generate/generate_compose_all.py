@@ -25,6 +25,8 @@ def generate_compose_all(
     q5_batch_size: int = 10000,
     chaos_monkey: bool = False,
     chaos_kill_interval: int = 30,
+    watchdog: bool = False,
+    watchdog_timeout: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -53,6 +55,7 @@ def generate_compose_all(
                 **dict(rabbitmq_healthy),
                 "gateway": {"condition": "service_started"},
             },
+            "volumes": [f"./data/q4_sg_detect_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
@@ -65,6 +68,7 @@ def generate_compose_all(
                 f"NUM_OG_WORKERS={q4_n_detect}",
                 f"NUM_DT_WORKERS={q4_n_detect}",
                 f"BATCH_SIZE={q4_batch_size}",
+                f"CONTAINER_NAME=q4_sg_detect_{i}",
             ],
         }
 
@@ -80,6 +84,7 @@ def generate_compose_all(
             },
             "container_name": f"q4_og_detect_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q4_sg_depends},
+            "volumes": [f"./data/q4_og_detect_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
@@ -88,6 +93,7 @@ def generate_compose_all(
                 "OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={q4_og_rks}",
                 "MIN_DESTINATIONS=5",
+                f"CONTAINER_NAME=q4_og_detect_{i}",
             ],
         }
 
@@ -99,6 +105,7 @@ def generate_compose_all(
             },
             "container_name": f"q4_dt_detect_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q4_sg_depends},
+            "volumes": [f"./data/q4_dt_detect_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=4",
                 "MOM_HOST=rabbitmq",
@@ -107,6 +114,7 @@ def generate_compose_all(
                 "OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={q4_sg_rks}",
                 "MIN_ORIGINS=5",
+                f"CONTAINER_NAME=q4_dt_detect_{i}",
             ],
         }
 
@@ -126,6 +134,7 @@ def generate_compose_all(
             },
             "container_name": f"q4_split_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q4_og_depends, **q4_dt_depends},
+            "volumes": [f"./data/q4_split_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=4",
                 f"SPLIT_AMOUNT={q4_n_split}",
@@ -135,6 +144,8 @@ def generate_compose_all(
                 f"DESTINATION_ROUTING_KEYS={q4_dest_rks}",
                 "MOM_HOST=rabbitmq",
                 f"BATCH_SIZE={q4_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=q4_split_{i}",
             ],
         }
 
@@ -149,6 +160,7 @@ def generate_compose_all(
             },
             "container_name": f"q4_filter_date_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q4_split_depends},
+            "volumes": [f"./data/q4_filter_date_{i}:/data"],
             "environment": [
                 "ADD_QUERY_ID=True",
                 f"FILTER_AMOUNT={q4_n_filter_date}",
@@ -159,6 +171,8 @@ def generate_compose_all(
                 "OUTPUT_QUEUES=tx_usd_date",
                 "MOM_HOST=rabbitmq",
                 f"BATCH_SIZE={q4_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=q4_filter_date_{i}",
             ],
         }
 
@@ -173,6 +187,7 @@ def generate_compose_all(
                 **dict(rabbitmq_healthy),
                 "gateway": {"condition": "service_started"},
             },
+            "volumes": [f"./data/q1_filter_amount_{i}:/data"],
             "environment": [
                 f"FILTER_AMOUNT={q1_n_filter_amount}",
                 "QUERY_NUMBER=1",
@@ -182,6 +197,8 @@ def generate_compose_all(
                 "MAX_AMOUNT=50",
                 "ADD_QUERY_ID=True",
                 f"BATCH_SIZE={q1_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=q1_filter_amount_{i}",
             ],
         }
 
@@ -193,7 +210,7 @@ def generate_compose_all(
             },
             "container_name": f"avg_joiner_{i}",
             "depends_on": dict(rabbitmq_healthy),
-            "volumes": ["./src/business/query3/spill_to_disk:/data"],
+            "volumes": [f"./data/avg_joiner_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
@@ -202,8 +219,9 @@ def generate_compose_all(
                 "OUTPUT_QUEUE=results_queue",
                 f"AVG_JOINER_AMOUNT={q3_n_avg_joiner}",
                 f"AVG_AMOUNT={q3_n_avg}",
-                f"DATA_DIR=/data/joiner_{i}",
+                "DATA_DIR=/data",
                 f"BATCH_SIZE={q3_batch_size}",
+                f"CONTAINER_NAME=avg_joiner_{i}",
             ],
         }
 
@@ -219,12 +237,15 @@ def generate_compose_all(
             },
             "container_name": f"avg_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **avg_joiner_depends},
+            "volumes": [f"./data/avg_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
                 f"INPUT_QUEUE=avg_queue_{i}",
                 f"OUTPUT_QUEUES={q3_avg_joiner_rks}",
                 f"AVG_AMOUNT={q3_n_avg}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=avg_{i}",
             ],
         }
 
@@ -242,6 +263,7 @@ def generate_compose_all(
                 **dict(rabbitmq_healthy),
                 **q3_avg_depends,
             },
+            "volumes": [f"./data/split_date_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
@@ -254,6 +276,8 @@ def generate_compose_all(
                 "SECOND_PERIOD_LE=2022-09-14",
                 f"SPLIT_AMOUNT={q3_n_split_date}",
                 f"BATCH_SIZE={q3_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=split_date_{i}",
             ],
         }
 
@@ -268,6 +292,7 @@ def generate_compose_all(
                 **dict(rabbitmq_healthy),
                 "gateway": {"condition": "service_started"},
             },
+            "volumes": [f"./data/filter_q5_fmt_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=5",
                 "MOM_HOST=rabbitmq",
@@ -279,6 +304,8 @@ def generate_compose_all(
                 "LE_DATE=2022-09-05",
                 "PAY_FMTS=Wire,ACH",
                 f"BATCH_SIZE={q5_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=filter_q5_fmt_{i}",
             ],
         }
 
@@ -295,6 +322,7 @@ def generate_compose_all(
             },
             "container_name": f"converter_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q5_fmt_depends},
+            "volumes": [f"./data/converter_{i}:/data"],
             "environment": [
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=converter_queue",
@@ -302,6 +330,8 @@ def generate_compose_all(
                 f"CONVERTER_AMOUNT={q5_n_converter}",
                 "FRANKFURTER_BASE=https://api.frankfurter.dev/v2",
                 f"BATCH_SIZE={q5_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=converter_{i}",
             ],
         }
 
@@ -317,6 +347,7 @@ def generate_compose_all(
             },
             "container_name": f"filter_q5_amount_{i}",
             "depends_on": {**dict(rabbitmq_healthy), **q5_converter_depends},
+            "volumes": [f"./data/filter_q5_amount_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=5",
                 "ADD_QUERY_ID=True",
@@ -326,6 +357,8 @@ def generate_compose_all(
                 f"FILTER_AMOUNT={q5_n_filter_amount}",
                 "MAX_AMOUNT=1.0",
                 f"BATCH_SIZE={q5_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=filter_q5_amount_{i}",
             ],
         }
 
@@ -355,6 +388,7 @@ def generate_compose_all(
                 **split_date_depends,
                 **q4_filter_date_depends,
             },
+            "volumes": [f"./data/filter_usd_{i}:/data"],
             "environment": [
                 f"FILTER_AMOUNT={n_filter_usd}",
                 "QUERY_NUMBER=0",
@@ -364,6 +398,8 @@ def generate_compose_all(
                 "OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date",
                 "USD_ONLY=True",
                 f"BATCH_SIZE={filter_usd_batch_size}",
+                "DATA_DIR=/data",
+                f"CONTAINER_NAME=filter_usd_{i}",
             ],
         }
 
@@ -434,6 +470,18 @@ def generate_compose_all(
             "depends_on": dict(rabbitmq_healthy),
         }
 
+    if watchdog:
+        services["watchdog"] = {
+            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+            "container_name": "watchdog",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                "MOM_HOST=rabbitmq",
+                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
     return {"services": services}
 
 
@@ -466,6 +514,8 @@ def main():
     parser.add_argument("--q5-batch-size", type=int, default=10000)
     parser.add_argument("--chaos-monkey", action="store_true", default=False)
     parser.add_argument("--chaos-kill-interval", type=int, default=30)
+    parser.add_argument("--watchdog", action="store_true", default=False)
+    parser.add_argument("--watchdog-timeout", type=int, default=30)
     args = parser.parse_args()
 
     compose = generate_compose_all(
@@ -488,6 +538,8 @@ def main():
         q5_batch_size=args.q5_batch_size,
         chaos_monkey=args.chaos_monkey,
         chaos_kill_interval=args.chaos_kill_interval,
+        watchdog=args.watchdog,
+        watchdog_timeout=args.watchdog_timeout,
     )
 
     with open(args.output, "w") as f:
