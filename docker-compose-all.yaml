@@ -444,7 +444,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_0
   avg_joiner_1:
     build:
@@ -464,7 +464,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_1
   avg_joiner_2:
     build:
@@ -484,7 +484,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_2
   avg_joiner_3:
     build:
@@ -504,7 +504,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_3
   avg_joiner_4:
     build:
@@ -524,7 +524,7 @@ services:
     - AVG_JOINER_AMOUNT=5
     - AVG_AMOUNT=2
     - DATA_DIR=/data
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_4
   avg_0:
     build:
@@ -599,7 +599,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_0
   split_date_1:
@@ -624,7 +624,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_1
   split_date_2:
@@ -649,7 +649,7 @@ services:
     - SECOND_PERIOD_GE=2022-09-06
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
-    - BATCH_SIZE=1000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_2
   filter_q5_fmt_0:
@@ -984,7 +984,7 @@ services:
     volumes:
     - ./data/filter_usd_0:/data
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -1015,7 +1015,7 @@ services:
     volumes:
     - ./data/filter_usd_1:/data
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -1046,7 +1046,7 @@ services:
     volumes:
     - ./data/filter_usd_2:/data
     environment:
-    - FILTER_AMOUNT=3
+    - FILTER_AMOUNT=7
     - QUERY_NUMBER=0
     - INPUT_EXCHANGE_NAME=input_gateway_exchange
     - INPUT_ROUTING_KEYS=filter_usd
@@ -1056,6 +1056,130 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_2
+  filter_usd_3:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_3
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    volumes:
+    - ./data/filter_usd_3:/data
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+    - DATA_DIR=/data
+    - CONTAINER_NAME=filter_usd_3
+  filter_usd_4:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_4
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    volumes:
+    - ./data/filter_usd_4:/data
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+    - DATA_DIR=/data
+    - CONTAINER_NAME=filter_usd_4
+  filter_usd_5:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_5
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    volumes:
+    - ./data/filter_usd_5:/data
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+    - DATA_DIR=/data
+    - CONTAINER_NAME=filter_usd_5
+  filter_usd_6:
+    build:
+      context: ./src/
+      dockerfile: business/common_workers/filter/Dockerfile
+    container_name: filter_usd_6
+    depends_on:
+      rabbitmq: *id001
+      gateway:
+        condition: service_started
+      q1_filter_amount_0: *id031
+      q1_filter_amount_1: *id032
+      q1_filter_amount_2: *id033
+      split_date_0: *id034
+      split_date_1: *id035
+      split_date_2: *id036
+      q4_filter_date_0: *id037
+      q4_filter_date_1: *id038
+      q4_filter_date_2: *id039
+    volumes:
+    - ./data/filter_usd_6:/data
+    environment:
+    - FILTER_AMOUNT=7
+    - QUERY_NUMBER=0
+    - INPUT_EXCHANGE_NAME=input_gateway_exchange
+    - INPUT_ROUTING_KEYS=filter_usd
+    - MOM_HOST=rabbitmq
+    - OUTPUT_QUEUES=q1_filter_amount,q3_split_queue,q4_filter_date
+    - USD_ONLY=True
+    - BATCH_SIZE=10000
+    - DATA_DIR=/data
+    - CONTAINER_NAME=filter_usd_6
   client0:
     container_name: client0
     build:
@@ -1067,6 +1191,14 @@ services:
       filter_usd_1:
         condition: service_started
       filter_usd_2:
+        condition: service_started
+      filter_usd_3:
+        condition: service_started
+      filter_usd_4:
+        condition: service_started
+      filter_usd_5:
+        condition: service_started
+      filter_usd_6:
         condition: service_started
       filter_q5_fmt_0:
         condition: service_started
@@ -1122,6 +1254,18 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
+  chaos_monkey:
+    build:
+      context: ./src/
+      dockerfile: chaos_monkey/Dockerfile
+    container_name: chaos_monkey
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - KILL_INTERVAL=30
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0,watchdog
+    depends_on:
+      rabbitmq: *id001
   watchdog:
     build:
       context: ./src/
