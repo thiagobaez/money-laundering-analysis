@@ -36,10 +36,11 @@ OUTPUT_ROUTING_KEYS = (
 
 
 class Converter:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self._rate_lookup: dict[tuple[str, str], float] = {}
         self.eof_seen: set[str] = set()
         self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -69,10 +70,13 @@ class Converter:
         logging.info("[CONVERTER] Resumed from checkpoint")
 
     def _save_checkpoint(self):
-        checkpoint.save(DATA_DIR, {
-            "last_msg_hash": self._last_msg_hash,
-            "eof_seen": list(self.eof_seen),
-        })
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_seen": list(self.eof_seen),
+            },
+        )
 
     def _get_rate(self, iso_code: str, date_iso: str) -> float:
         key = (date_iso, iso_code)
@@ -164,6 +168,9 @@ class Converter:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.output_queue.close()
@@ -176,8 +183,9 @@ def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
     from common.heartbeat import start_if_configured
-    start_if_configured()
-    worker = Converter()
+
+    heartbeat = start_if_configured()
+    worker = Converter(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
