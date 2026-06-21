@@ -20,10 +20,10 @@ NUM_DT_WORKERS = int(os.environ.get("NUM_DT_WORKERS", "1"))
 
 
 class SgDetect:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self._lock = threading.Lock()
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._heartbeat = heartbeat
         self.origins_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, ORIGIN_EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
         )
@@ -51,12 +51,15 @@ class SgDetect:
 
     def _save_checkpoint(self):
         with self._lock:
-            checkpoint.save(DATA_DIR, {
-                "last_origins_hash": self._last_origins_hash,
-                "last_destinations_hash": self._last_destinations_hash,
-                "origins_eofs": self.origins_eofs,
-                "destinations_eofs": self.destinations_eofs,
-            })
+            checkpoint.save(
+                DATA_DIR,
+                {
+                    "last_origins_hash": self._last_origins_hash,
+                    "last_destinations_hash": self._last_destinations_hash,
+                    "origins_eofs": self.origins_eofs,
+                    "destinations_eofs": self.destinations_eofs,
+                },
+            )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -211,6 +214,9 @@ class SgDetect:
         destinations_thread.join()
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.origins_queue.stop_consuming()
@@ -226,8 +232,10 @@ def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
-    start_if_configured()
-    worker = SgDetect()
+
+    heartbeat = start_if_configured()
+    worker = SgDetect(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

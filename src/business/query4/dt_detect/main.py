@@ -19,9 +19,10 @@ DATA_DIR = "/data"
 
 
 class DtDetect:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self._logs = {}
+        self._heartbeat = heartbeat
         self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, INPUT_EXCHANGE_NAME, [INPUT_ROUTING_KEY]
@@ -106,6 +107,9 @@ class DtDetect:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.input_queue.stop_consuming()
@@ -121,8 +125,9 @@ class DtDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
-    start_if_configured()
-    worker = DtDetect()
+    heartbeat = start_if_configured()
+    worker = DtDetect(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

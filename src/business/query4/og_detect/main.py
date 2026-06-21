@@ -20,10 +20,10 @@ DATA_DIR = "/data"
 
 
 class OgDetect:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self._logs = {}
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._heartbeat = heartbeat
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
         )
@@ -112,6 +112,9 @@ class OgDetect:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.input_queue.stop_consuming()
@@ -127,8 +130,9 @@ class OgDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
-    start_if_configured()
-    worker = OgDetect()
+    heartbeat = start_if_configured()
+    worker = OgDetect(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:
