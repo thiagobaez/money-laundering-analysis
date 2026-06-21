@@ -18,7 +18,8 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class AvgJoiner:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
+        self._heartbeat = heartbeat
         self.eof_seen: set[str] = set()
         self.sp_eof_done: set[str] = set()
         self.avg_eof: set[str] = set()
@@ -62,15 +63,18 @@ class AvgJoiner:
 
     def _save_checkpoint(self):
         with self._checkpoint_lock:
-            checkpoint.save(DATA_DIR, {
-                "last_sp_hash": self._last_sp_hash,
-                "last_avg_hash": self._last_avg_hash,
-                "eof_seen": list(self.eof_seen),
-                "sp_eof_done": list(self.sp_eof_done),
-                "avg_eof": list(self.avg_eof),
-                "avg_eof_counts": self.avg_eof_counts,
-                "avg_results": self.avg_results,
-            })
+            checkpoint.save(
+                DATA_DIR,
+                {
+                    "last_sp_hash": self._last_sp_hash,
+                    "last_avg_hash": self._last_avg_hash,
+                    "eof_seen": list(self.eof_seen),
+                    "sp_eof_done": list(self.sp_eof_done),
+                    "avg_eof": list(self.avg_eof),
+                    "avg_eof_counts": self.avg_eof_counts,
+                    "avg_results": self.avg_results,
+                },
+            )
 
     def _get_file_lock(self, client_id: str, payment_format: str) -> threading.Lock:
         key = (client_id, payment_format)
@@ -348,13 +352,17 @@ class AvgJoiner:
         avg_thread = threading.Thread(target=self._run_avg_consumer, daemon=True)
         avg_thread.start()
 
-        self.second_period_consumer.start_consuming(self._on_second_period_message)
-
-        self.avg_consumer.stop_consuming()
-        avg_thread.join()
-        self.second_period_consumer.close()
-        self.avg_consumer.close()
-        self.output_queue.close()
+        try:
+            self.second_period_consumer.start_consuming(self._on_second_period_message)
+            self.avg_consumer.stop_consuming()
+            avg_thread.join()
+            self.second_period_consumer.close()
+            self.avg_consumer.close()
+            self.output_queue.close()
+        finally:
+            if self._heartbeat:
+                self._heartbeat.stop()
+                self._heartbeat = None
 
     def stop(self):
         self.second_period_consumer.stop_consuming()
@@ -364,8 +372,9 @@ def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
     from common.heartbeat import start_if_configured
-    start_if_configured()
-    worker = AvgJoiner()
+
+    heartbeat = start_if_configured()
+    worker = AvgJoiner(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.stop())
     try:
         worker.start()
