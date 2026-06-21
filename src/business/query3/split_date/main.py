@@ -19,11 +19,12 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class SplitDate:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.eof_seen: set[str] = set()
         self.first_batches: dict[str, dict[int, list]] = {}
         self.second_batches: dict[str, list] = {}
         self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -51,15 +52,18 @@ class SplitDate:
         logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT_DATE] Resumed from checkpoint")
 
     def _save_checkpoint(self):
-        checkpoint.save(DATA_DIR, {
-            "last_msg_hash": self._last_msg_hash,
-            "eof_seen": list(self.eof_seen),
-            "first_batches": {
-                client_id: {str(k): v for k, v in per_idx.items()}
-                for client_id, per_idx in self.first_batches.items()
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_seen": list(self.eof_seen),
+                "first_batches": {
+                    client_id: {str(k): v for k, v in per_idx.items()}
+                    for client_id, per_idx in self.first_batches.items()
+                },
+                "second_batches": self.second_batches,
             },
-            "second_batches": self.second_batches,
-        })
+        )
 
     def _is_eof(self, fields):
         return len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF")
@@ -174,6 +178,9 @@ class SplitDate:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
@@ -188,8 +195,9 @@ def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
     from common.heartbeat import start_if_configured
-    start_if_configured()
-    worker = SplitDate()
+
+    heartbeat = start_if_configured()
+    worker = SplitDate(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
