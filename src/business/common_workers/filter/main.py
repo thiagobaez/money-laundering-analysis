@@ -47,7 +47,6 @@ class Filter:
         self.closed = False
         self.eof_seen: set[str] = set()
         self.batches: dict[str, list] = {}
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
         self._last_msg_hash: str | None = None
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
@@ -86,16 +85,14 @@ class Filter:
         logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
 
     def _save_checkpoint(self):
-        checkpoint.save(DATA_DIR, {
-            "last_msg_hash": self._last_msg_hash,
-            "eof_seen": list(self.eof_seen),
-            "batches": self.batches,
-        })
-
-    def _handle_sigterm(self, signum, frame):
-        self.close()
-        if self._prev_sigterm_handler:
-            self._prev_sigterm_handler(signum, frame)
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_seen": list(self.eof_seen),
+                "batches": self.batches,
+            },
+        )
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -202,9 +199,10 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
-    start_if_configured()
+
+    heartbeat = start_if_configured()
     worker = Filter()
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
@@ -214,6 +212,8 @@ def main():
         return 1
     finally:
         worker.close()
+        if heartbeat:
+            heartbeat.stop()
     return 0
 
 
