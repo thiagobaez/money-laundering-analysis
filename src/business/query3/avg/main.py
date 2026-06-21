@@ -12,9 +12,10 @@ OUTPUT_QUEUES = os.environ["OUTPUT_QUEUES"].split(",")
 
 
 class Avg:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.accum: dict[str, dict[str, list]] = {}
         self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -35,10 +36,13 @@ class Avg:
         logging.info(f"[QUERY {QUERY_NUMBER}] [AVG] Resumed from checkpoint")
 
     def _save_checkpoint(self):
-        checkpoint.save(DATA_DIR, {
-            "last_msg_hash": self._last_msg_hash,
-            "accum": self.accum,
-        })
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "accum": self.accum,
+            },
+        )
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -106,6 +110,9 @@ class Avg:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
@@ -119,8 +126,9 @@ def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
     from common.heartbeat import start_if_configured
-    start_if_configured()
-    worker = Avg()
+
+    heartbeat = start_if_configured()
+    worker = Avg(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
