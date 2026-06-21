@@ -43,11 +43,12 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class Filter:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self.eof_seen: set[str] = set()
         self.batches: dict[str, list] = {}
         self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -188,6 +189,9 @@ class Filter:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
@@ -203,7 +207,7 @@ def main():
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()
-    worker = Filter()
+    worker = Filter(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
@@ -212,8 +216,6 @@ def main():
         return 1
     finally:
         worker.close()
-        if heartbeat:
-            heartbeat.stop()
     return 0
 
 
