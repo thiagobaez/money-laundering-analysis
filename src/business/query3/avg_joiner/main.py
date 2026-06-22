@@ -362,7 +362,7 @@ class AvgJoiner:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()
