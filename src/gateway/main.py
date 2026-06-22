@@ -27,6 +27,7 @@ INPUT_ROUTING_KEYS = (
 INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
+AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "0"))
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -67,6 +68,7 @@ def handle_client_request(client_socket, msg_handler):
 def handle_client_response(client_map, num_expected_eofs):
     output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
     eof_counts = {}
+    q3_eof_seen = {}
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -75,20 +77,51 @@ def handle_client_response(client_map, num_expected_eofs):
             if not isinstance(deserialized, list) or len(deserialized) == 0:
                 ack()
                 return
+
             client_id = deserialized[0]
             if client_id not in client_map:
                 ack()
                 return
+
             handler, client_socket = client_map[client_id]
+
+            if (
+                AVG_JOINER_AMOUNT > 0
+                and len(deserialized) == 4
+                and deserialized[1] == 3
+                and deserialized[2] == "EOF"
+            ):
+                worker_id = deserialized[3]
+                q3_eof_seen.setdefault(client_id, set()).add(worker_id)
+
+                if len(q3_eof_seen[client_id]) < AVG_JOINER_AMOUNT:
+                    ack()
+                    return
+
+                del q3_eof_seen[client_id]
+
+                eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+
+                if eof_counts[client_id] >= num_expected_eofs:
+                    external.send_msg(client_socket, external.MsgType.EOF)
+                    del client_map[client_id]
+                    del eof_counts[client_id]
+
+                ack()
+                return
+
             result = handler.deserialize_result(message)
+
             if result is None:
                 eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+
                 logging.info(
                     "EOF %d/%d received for client_id=%s",
                     eof_counts[client_id],
                     num_expected_eofs,
                     client_id,
                 )
+
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
                     del client_map[client_id]
@@ -97,7 +130,9 @@ def handle_client_response(client_map, num_expected_eofs):
                 query_id, rows = result
                 msg_type = _QUERY_RESULT_TYPES[query_id]
                 external.send_batch(client_socket, rows, msg_type)
+
             ack()
+
         except socket.error:
             logging.error("The connection with the client was lost")
             if client_id is not None and client_id in client_map:
