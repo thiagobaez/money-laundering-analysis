@@ -9,7 +9,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
+    - INPUT_FILE=/datasets/HI-Small_Trans.csv.gz
     - OUTPUT_FILE=/output/client0/output.csv
     - BATCH_SIZE=1000
     volumes:
@@ -27,7 +27,7 @@ services:
     - INPUT_QUEUE=filter_usd_queue
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - NUM_EXPECTED_EOFS=5
+    - NUM_EXPECTED_EOFS=1
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
@@ -41,6 +41,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_usd_0:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -49,6 +51,7 @@ services:
     - FILTER_AMOUNT=3
     - USD_ONLY=True
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=filter_usd_0
   filter_usd_1:
     build:
       context: ./src/
@@ -58,6 +61,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_usd_1:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -66,6 +71,7 @@ services:
     - FILTER_AMOUNT=3
     - USD_ONLY=True
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=filter_usd_1
   filter_usd_2:
     build:
       context: ./src/
@@ -75,6 +81,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_usd_2:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -83,6 +91,7 @@ services:
     - FILTER_AMOUNT=3
     - USD_ONLY=True
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=filter_usd_2
   avg_joiner_0:
     build:
       context: ./src/
@@ -102,6 +111,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_0
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=avg_joiner_0
   avg_joiner_1:
     build:
       context: ./src/
@@ -121,6 +131,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_1
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=avg_joiner_1
   avg_joiner_2:
     build:
       context: ./src/
@@ -140,6 +151,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_2
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=avg_joiner_2
   avg_joiner_3:
     build:
       context: ./src/
@@ -159,6 +171,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_3
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=avg_joiner_3
   avg_joiner_4:
     build:
       context: ./src/
@@ -178,6 +191,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data/joiner_4
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=avg_joiner_4
   avg_0:
     build:
       context: ./src/
@@ -195,12 +209,15 @@ services:
         condition: service_started
       avg_joiner_4: &id006
         condition: service_started
+    volumes:
+    - ./data/avg_0:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_0
     - OUTPUT_QUEUES=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
+    - CONTAINER_NAME=avg_0
   avg_1:
     build:
       context: ./src/
@@ -213,12 +230,15 @@ services:
       avg_joiner_2: *id004
       avg_joiner_3: *id005
       avg_joiner_4: *id006
+    volumes:
+    - ./data/avg_1:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=avg_queue_1
     - OUTPUT_QUEUES=avg_joiner_0,avg_joiner_1,avg_joiner_2,avg_joiner_3,avg_joiner_4
     - AVG_AMOUNT=2
+    - CONTAINER_NAME=avg_1
   split_date_0:
     build:
       context: ./src/
@@ -236,6 +256,8 @@ services:
         condition: service_started
       avg_1: &id011
         condition: service_started
+    volumes:
+    - ./data/split_date_0:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -248,6 +270,7 @@ services:
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=split_date_0
   split_date_1:
     build:
       context: ./src/
@@ -260,6 +283,8 @@ services:
       filter_usd_2: *id009
       avg_0: *id010
       avg_1: *id011
+    volumes:
+    - ./data/split_date_1:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -272,6 +297,7 @@ services:
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=split_date_1
   split_date_2:
     build:
       context: ./src/
@@ -284,6 +310,8 @@ services:
       filter_usd_2: *id009
       avg_0: *id010
       avg_1: *id011
+    volumes:
+    - ./data/split_date_2:/data
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
@@ -296,6 +324,7 @@ services:
     - SECOND_PERIOD_LE=2022-09-14
     - SPLIT_AMOUNT=3
     - BATCH_SIZE=1000
+    - CONTAINER_NAME=split_date_2
   rabbitmq:
     build:
       context: ./src/
@@ -312,3 +341,15 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
+  watchdog:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=30
+    depends_on:
+      rabbitmq: *id001
