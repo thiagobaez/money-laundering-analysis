@@ -28,7 +28,6 @@ class AvgJoiner:
         self.avg_results_lock = threading.Lock()
         self.file_locks: dict[tuple, threading.Lock] = {}
         self.file_locks_lock = threading.Lock()
-        self.output_batches: dict[str, list] = {}
         self.spill_batches: dict[str, dict[str, list]] = {}
         self.spill_lock = threading.Lock()
         self.eof_coord_lock = threading.Lock()
@@ -103,6 +102,12 @@ class AvgJoiner:
         if should_flush:
             self._flush_spill_batch(client_id, payment_format)
 
+    def _flush_all_spill_batches(self, client_id: str):
+        with self.spill_lock:
+            formats = list(self.spill_batches.get(client_id, {}).keys())
+        for payment_format in formats:
+            self._flush_spill_batch(client_id, payment_format)
+
     def _flush_spill_batch(self, client_id: str, payment_format: str):
         with self.spill_lock:
             rows = self.spill_batches.get(client_id, {}).get(payment_format, [])
@@ -124,32 +129,13 @@ class AvgJoiner:
         with self.output_lock:
             self.output_queue.send(message)
 
-    def _flush_output_batch(self, client_id: str):
-        with self.output_lock:
-            batch = self.output_batches.pop(client_id, [])
-
-            if batch:
-                self.output_queue.send(
-                    message_protocol.internal.serialize(
-                        [client_id, QUERY_NUMBER, batch]
-                    )
-                )
-
     def _append_output_rows(self, client_id: str, rows: list):
         if not rows:
             return
 
-        with self.output_lock:
-            self.output_batches.setdefault(client_id, []).extend(rows)
-
-            if len(self.output_batches[client_id]) >= BATCH_SIZE:
-                batch = self.output_batches.pop(client_id, [])
-
-                self.output_queue.send(
-                    message_protocol.internal.serialize(
-                        [client_id, QUERY_NUMBER, batch]
-                    )
-                )
+        self._send_output(
+            message_protocol.internal.serialize([client_id, QUERY_NUMBER, rows])
+        )
 
     def _flush_to_output(self, client_id: str, payment_format: str, avg: float):
         self._flush_spill_batch(client_id, payment_format)
@@ -218,23 +204,30 @@ class AvgJoiner:
         with self.eof_coord_lock:
             if client_id not in self.sp_eof_done or client_id not in self.avg_eof:
                 return
-            self.sp_eof_done.discard(client_id)
-            self.avg_eof.discard(client_id)
 
         self._flush_all_spill_to_output(client_id)
-        self._flush_output_batch(client_id)
-        self._send_output(message_protocol.internal.serialize([client_id]))
+        worker_id = os.environ.get("HOSTNAME", "unknown")
+        self._send_output(
+            message_protocol.internal.serialize(
+                [client_id, QUERY_NUMBER, "EOF", worker_id]
+            )
+        )
+        with self.eof_coord_lock:
+            self.avg_eof.discard(client_id)
+            self.sp_eof_done.discard(client_id)
+
         with self.avg_results_lock:
             self.avg_results.pop(client_id, None)
+
         self._cleanup_client(client_id)
+        self._save_checkpoint()
 
     def _on_second_period_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received second period message")
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_sp_hash:
-                ack()
-                return
+            # h = checkpoint.msg_hash(message)
+            # if h == self._last_sp_hash:
+            #    ack()
+            #    return
 
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
@@ -262,7 +255,8 @@ class AvgJoiner:
                     self.second_period_consumer.send(
                         message_protocol.internal.serialize([client_id, "EOF", counter])
                     )
-                self._last_sp_hash = h
+
+                # self._last_sp_hash = h
                 self._save_checkpoint()
                 ack()
                 return
@@ -276,16 +270,17 @@ class AvgJoiner:
 
                 with self.avg_results_lock:
                     avg = self.avg_results.get(client_id, {}).get(payment_format)
+                    if avg is None:
+                        self._spill_tx(client_id, tx)
+                        continue
 
-                if avg is not None:
-                    if tx.is_sent_amount_below(avg / 100):
-                        output_batch.append(tx.to_fields())
-                else:
-                    self._spill_tx(client_id, tx)
+                if tx.is_sent_amount_below(avg / 100):
+                    output_batch.append(tx.to_fields())
 
             self._append_output_rows(client_id, output_batch)
 
-            self._last_sp_hash = h
+            # self._last_sp_hash = h
+            self._flush_all_spill_batches(client_id)
             self._save_checkpoint()
             ack()
         except Exception as e:
@@ -295,12 +290,11 @@ class AvgJoiner:
             nack()
 
     def _on_avg_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received avg message")
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_avg_hash:
-                ack()
-                return
+            # h = checkpoint.msg_hash(message)
+            # if h == self._last_avg_hash:
+            #    ack()
+            #    return
 
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
@@ -311,7 +305,7 @@ class AvgJoiner:
                     self.avg_eof_counts.get(client_id, 0) + 1
                 )
                 if self.avg_eof_counts[client_id] < AVG_AMOUNT:
-                    self._last_avg_hash = h
+                    # self._last_avg_hash = h
                     self._save_checkpoint()
                     ack()
                     return
@@ -319,7 +313,7 @@ class AvgJoiner:
                 with self.eof_coord_lock:
                     self.avg_eof.add(client_id)
                 self._try_send_eof(client_id)
-                self._last_avg_hash = h
+                # self._last_avg_hash = h
                 self._save_checkpoint()
                 ack()
                 return
@@ -337,7 +331,7 @@ class AvgJoiner:
 
                 self._flush_to_output(client_id, payment_format, avg)
 
-            self._last_avg_hash = h
+            # self._last_avg_hash = h
             self._save_checkpoint()
             ack()
         except Exception as e:
@@ -370,7 +364,7 @@ class AvgJoiner:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()
