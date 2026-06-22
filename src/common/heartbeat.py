@@ -58,7 +58,7 @@ class HeartbeatSender:
 def start_if_configured():
     name = os.environ.get("CONTAINER_NAME", "")
     host = os.environ.get("MOM_HOST", "rabbitmq")
-    interval = float(os.environ.get("HEARTBEAT_INTERVAL", "10"))
+    interval = float(os.environ.get("HEARTBEAT_INTERVAL", "3"))
     if name:
         sender = HeartbeatSender(name, host, interval)
         sender.start()
