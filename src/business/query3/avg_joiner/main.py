@@ -224,11 +224,6 @@ class AvgJoiner:
 
     def _on_second_period_message(self, message, ack, nack):
         try:
-            # h = checkpoint.msg_hash(message)
-            # if h == self._last_sp_hash:
-            #    ack()
-            #    return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -261,6 +256,11 @@ class AvgJoiner:
                 ack()
                 return
 
+            h = checkpoint.msg_hash(message)
+            if h == self._last_sp_hash:
+                ack()
+                return
+
             rows = fields[1]
             output_batch = []
 
@@ -279,8 +279,8 @@ class AvgJoiner:
 
             self._append_output_rows(client_id, output_batch)
 
-            # self._last_sp_hash = h
             self._flush_all_spill_batches(client_id)
+            self._last_sp_hash = h
             self._save_checkpoint()
             ack()
         except Exception as e:
@@ -291,11 +291,6 @@ class AvgJoiner:
 
     def _on_avg_message(self, message, ack, nack):
         try:
-            # h = checkpoint.msg_hash(message)
-            # if h == self._last_avg_hash:
-            #    ack()
-            #    return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -305,7 +300,6 @@ class AvgJoiner:
                     self.avg_eof_counts.get(client_id, 0) + 1
                 )
                 if self.avg_eof_counts[client_id] < AVG_AMOUNT:
-                    # self._last_avg_hash = h
                     self._save_checkpoint()
                     ack()
                     return
@@ -313,8 +307,12 @@ class AvgJoiner:
                 with self.eof_coord_lock:
                     self.avg_eof.add(client_id)
                 self._try_send_eof(client_id)
-                # self._last_avg_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_avg_hash:
                 ack()
                 return
 
@@ -331,7 +329,7 @@ class AvgJoiner:
 
                 self._flush_to_output(client_id, payment_format, avg)
 
-            # self._last_avg_hash = h
+            self._last_avg_hash = h
             self._save_checkpoint()
             ack()
         except Exception as e:
