@@ -152,19 +152,18 @@ class Filter:
 
     def _on_message(self, message, ack, nack):
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
-                ack()
-                return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
                 self._flush_batch(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
-                self._last_msg_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
                 ack()
                 return
 

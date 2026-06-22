@@ -82,9 +82,6 @@ class SplitDate:
         batch = self.first_batches.get(client_id, {}).pop(idx, [])
 
         if batch:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] sending first_period batch client={client_id} queue_idx={idx} rows={len(batch)}"
-            )
             self.first_period_queues[idx].send(
                 message_protocol.internal.serialize([client_id, batch])
             )
@@ -92,9 +89,6 @@ class SplitDate:
     def _flush_second_batch(self, client_id):
         batch = self.second_batches.pop(client_id, [])
         if batch:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] sending second_period batch client={client_id} rows={len(batch)}"
-            )
             self.second_period_queue.send(
                 message_protocol.internal.serialize([client_id, batch])
             )
@@ -130,13 +124,7 @@ class SplitDate:
             )
 
     def _on_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
-                ack()
-                return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -146,8 +134,12 @@ class SplitDate:
                 )
                 self._flush_all_batches(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
-                self._last_msg_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
                 ack()
                 return
 
@@ -193,7 +185,7 @@ class SplitDate:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()

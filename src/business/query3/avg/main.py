@@ -59,6 +59,11 @@ class Avg:
             avg = suma / count
             batch.append([payment_format, avg])
 
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [AVG] Flushing EOF for client {client_id}, "
+            f"{len(batch)} payment formats, sending to {len(self.output_queues)} queues"
+        )
+
         if batch:
             for q in self.output_queues:
                 q.send(message_protocol.internal.serialize([client_id, batch]))
@@ -67,20 +72,22 @@ class Avg:
             q.send(message_protocol.internal.serialize([client_id]))
 
     def _on_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
-                ack()
-                return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] [AVG] EOF received for client {client_id}"
+                )
+
                 self._flush(client_id)
-                self._last_msg_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
                 ack()
                 return
 
