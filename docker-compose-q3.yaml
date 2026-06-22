@@ -351,6 +351,18 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
-    - HEARTBEAT_TIMEOUT=30
+    - HEARTBEAT_TIMEOUT=10
     depends_on:
       rabbitmq: *id001
+  chaos_monkey:
+      build:
+        context: ./src/
+        dockerfile: chaos_monkey/Dockerfile
+      container_name: chaos_monkey
+      volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      environment:
+      - KILL_INTERVAL=30
+      - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,watchdog,gateway,client
+      depends_on:
+        rabbitmq: *id001
