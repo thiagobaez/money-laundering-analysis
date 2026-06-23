@@ -99,7 +99,7 @@ class SplitDate:
         self.first_batches.pop(client_id, None)
         self._flush_second_batch(client_id)
 
-    def _on_eof(self, client_id, counter):
+    def _on_eof(self, client_id, counter, msg_hash):
         eof = message_protocol.internal.serialize([client_id])
         logging.info(
             f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
@@ -117,6 +117,8 @@ class SplitDate:
                 for q in self.first_period_queues:
                     q.send(eof)
                 self.second_period_queue.send(eof)
+                self._last_msg_hash = msg_hash
+                self._save_checkpoint()
                 self.eof_seen.discard(client_id)
         else:
             self.input_queue.send(
@@ -128,18 +130,18 @@ class SplitDate:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             if self._is_eof(fields):
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}"
                 )
                 self._flush_all_batches(client_id)
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
                 self._save_checkpoint()
-                ack()
-                return
-
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
                 ack()
                 return
 
