@@ -73,6 +73,11 @@ class Avg:
 
     def _on_message(self, message, ack, nack):
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -82,12 +87,8 @@ class Avg:
                 )
 
                 self._flush(client_id)
+                self._last_msg_hash = h
                 self._save_checkpoint()
-                ack()
-                return
-
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
                 ack()
                 return
 
