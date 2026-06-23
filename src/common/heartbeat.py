@@ -38,7 +38,7 @@ class HeartbeatSender:
                             }
                         )
                     )
-                    logging.info(
+                    logging.debug(
                         f"[HEARTBEAT] {self._container_name}: Sending heartbeat"
                     )
                     time.sleep(self._interval)

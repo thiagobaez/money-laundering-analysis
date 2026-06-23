@@ -9,6 +9,10 @@ def generate_compose(
     n_filter_amount: int = 2,
     input_files: list = None,
     batch_size: int = 10000,
+    chaos_monkey: bool = False,
+    chaos_kill_interval: int = 30,
+    watchdog: bool = False,
+    watchdog_timeout: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -80,6 +84,7 @@ def generate_compose(
                 "LE_DATE=2022-09-05",
                 "PAY_FMTS=Wire,ACH",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=filter_q5_fmt_{i}",
             ],
         }
 
@@ -106,6 +111,7 @@ def generate_compose(
                 f"CONVERTER_AMOUNT={n_converter}",
                 "FRANKFURTER_BASE=https://api.frankfurter.dev/v2",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=converter_{i}",
             ],
         }
 
@@ -132,6 +138,7 @@ def generate_compose(
                 f"FILTER_AMOUNT={n_filter_amount}",
                 "MAX_AMOUNT=1.0",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=filter_q5_amount_{i}",
             ],
         }
 
@@ -156,6 +163,31 @@ def generate_compose(
             "15672:15672",
         ],
     }
+
+    if chaos_monkey:
+        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        services["chaos_monkey"] = {
+            "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
+            "container_name": "chaos_monkey",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                f"KILL_INTERVAL={chaos_kill_interval}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
+    if watchdog:
+        services["watchdog"] = {
+            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+            "container_name": "watchdog",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                "MOM_HOST=rabbitmq",
+                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
 
     return {"services": services}
 
@@ -185,6 +217,11 @@ def main():
         default=10000,
     )
 
+    parser.add_argument("--chaos-monkey", action="store_true", default=False)
+    parser.add_argument("--chaos-kill-interval", type=int, default=30)
+    parser.add_argument("--watchdog", action="store_true", default=False)
+    parser.add_argument("--watchdog-timeout", type=int, default=30)
+
     args = parser.parse_args()
 
     compose = generate_compose(
@@ -193,6 +230,10 @@ def main():
         n_filter_amount=args.filter_amount,
         input_files=args.input_files,
         batch_size=args.batch_size,
+        chaos_monkey=args.chaos_monkey,
+        chaos_kill_interval=args.chaos_kill_interval,
+        watchdog=args.watchdog,
+        watchdog_timeout=args.watchdog_timeout,
     )
 
     with open(args.output, "w") as f:

@@ -49,6 +49,7 @@ class DtDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
+        logging.info(f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}")
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -97,6 +98,7 @@ class DtDetect:
                 from_account = row[2]
                 to_account = row[4]
                 log.write(f"{to_account}\t{from_account}\n".encode())
+            log.flush()
 
             ack()
         except Exception as e:

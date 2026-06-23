@@ -53,6 +53,7 @@ class OgDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
+        logging.info(f"[QUERY {QUERY_NUMBER}] [OG_DETECT] EOF received for client {client_id}")
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -102,6 +103,7 @@ class OgDetect:
                 from_account = row[2]
                 to_account = row[4]
                 log.write(f"{from_account}\t{to_account}\n".encode())
+            log.flush()
 
             ack()
         except Exception as e:

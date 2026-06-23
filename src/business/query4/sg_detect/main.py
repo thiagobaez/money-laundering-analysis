@@ -77,11 +77,6 @@ class SgDetect:
             ack()
             return
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_origins_hash:
-                ack()
-                return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -90,10 +85,18 @@ class SgDetect:
                     self.origins_eofs[client_id] = (
                         self.origins_eofs.get(client_id, 0) + 1
                     )
-                    if self.origins_eofs[client_id] >= NUM_OG_WORKERS:
+                    count = self.origins_eofs[client_id]
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Origins EOF received for client {client_id} ({count}/{NUM_OG_WORKERS})"
+                    )
+                    if count >= NUM_OG_WORKERS:
                         self._check_and_emit(client_id)
-                self._last_origins_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_origins_hash:
                 ack()
                 return
 
@@ -105,6 +108,8 @@ class SgDetect:
             with open(os.path.join(origins_dir, f"{origin_account}.csv"), "w") as f:
                 f.write("\n".join(destinations) + "\n")
 
+            self._last_origins_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing origin: {e}")
@@ -115,11 +120,6 @@ class SgDetect:
             ack()
             return
         try:
-            h = checkpoint.msg_hash(message)
-            if h == self._last_destinations_hash:
-                ack()
-                return
-
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
@@ -128,10 +128,18 @@ class SgDetect:
                     self.destinations_eofs[client_id] = (
                         self.destinations_eofs.get(client_id, 0) + 1
                     )
-                    if self.destinations_eofs[client_id] >= NUM_DT_WORKERS:
+                    count = self.destinations_eofs[client_id]
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Destinations EOF received for client {client_id} ({count}/{NUM_DT_WORKERS})"
+                    )
+                    if count >= NUM_DT_WORKERS:
                         self._check_and_emit(client_id)
-                self._last_destinations_hash = h
                 self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_destinations_hash:
                 ack()
                 return
 
@@ -143,6 +151,8 @@ class SgDetect:
             with open(os.path.join(dest_dir, f"{dest_account}.csv"), "w") as f:
                 f.write("\n".join(origins_of_dest) + "\n")
 
+            self._last_destinations_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing destination: {e}")
@@ -154,6 +164,7 @@ class SgDetect:
         dt_done = self.destinations_eofs.get(client_id, 0) >= NUM_DT_WORKERS
         if not (og_done and dt_done):
             return
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Both sides complete for client {client_id}, emitting results")
 
         self._emit_results(client_id)
 

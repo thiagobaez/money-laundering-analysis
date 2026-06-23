@@ -10,6 +10,10 @@ def generate_compose_q4(
     n_split: int = 3,
     n_detect: int = 3,
     batch_size: int = 10000,
+    chaos_monkey: bool = False,
+    chaos_kill_interval: int = 30,
+    watchdog: bool = False,
+    watchdog_timeout: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -43,6 +47,7 @@ def generate_compose_q4(
                 "MIN_COMMON=5",
                 f"NUM_OG_WORKERS={n_detect}",
                 f"NUM_DT_WORKERS={n_detect}",
+                f"CONTAINER_NAME=q4_sg_detect_{i}",
             ],
         }
 
@@ -68,6 +73,7 @@ def generate_compose_q4(
                 "OUTPUT_EXCHANGE_NAME=q4_og_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={og_detect_routing_keys}",
                 "MIN_DESTINATIONS=5",
+                f"CONTAINER_NAME=q4_og_detect_{i}",
             ],
         }
 
@@ -90,6 +96,7 @@ def generate_compose_q4(
                 "OUTPUT_EXCHANGE_NAME=q4_dt_detect_exchange",
                 f"OUTPUT_ROUTING_KEYS={sg_detect_routing_keys}",
                 "MIN_ORIGINS=5",
+                f"CONTAINER_NAME=q4_dt_detect_{i}",
             ],
         }
 
@@ -120,6 +127,7 @@ def generate_compose_q4(
                 f"DESTINATION_ROUTING_KEYS={destination_routing_keys}",
                 "MOM_HOST=rabbitmq",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=q4_split_{i}",
             ],
         }
 
@@ -147,6 +155,7 @@ def generate_compose_q4(
                 "OUTPUT_QUEUES=tx_usd_date",
                 "MOM_HOST=rabbitmq",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=q4_filter_date_{i}",
             ],
         }
 
@@ -174,6 +183,7 @@ def generate_compose_q4(
                 "OUTPUT_QUEUES=q4_filter_date",
                 "USD_ONLY=True",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=filter_usd_{i}",
             ],
         }
 
@@ -225,6 +235,31 @@ def generate_compose_q4(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if chaos_monkey:
+        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        services["chaos_monkey"] = {
+            "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
+            "container_name": "chaos_monkey",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                f"KILL_INTERVAL={chaos_kill_interval}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
+    if watchdog:
+        services["watchdog"] = {
+            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+            "container_name": "watchdog",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                "MOM_HOST=rabbitmq",
+                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
     return {"services": services}
 
 
@@ -237,6 +272,10 @@ def main():
     parser.add_argument("--filter-date", type=int, default=3)
     parser.add_argument("--split", type=int, default=3)
     parser.add_argument("--detect", type=int, default=3)
+    parser.add_argument("--chaos-monkey", action="store_true", default=False)
+    parser.add_argument("--chaos-kill-interval", type=int, default=30)
+    parser.add_argument("--watchdog", action="store_true", default=False)
+    parser.add_argument("--watchdog-timeout", type=int, default=30)
     args = parser.parse_args()
 
     compose = generate_compose_q4(
@@ -246,6 +285,10 @@ def main():
         n_split=args.split,
         n_detect=args.detect,
         batch_size=args.batch_size,
+        chaos_monkey=args.chaos_monkey,
+        chaos_kill_interval=args.chaos_kill_interval,
+        watchdog=args.watchdog,
+        watchdog_timeout=args.watchdog_timeout,
     )
 
     with open(args.output, "w") as f:
