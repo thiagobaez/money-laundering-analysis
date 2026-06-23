@@ -115,7 +115,7 @@ class Converter:
     def _send_eof(self, client_id):
         self.output_queue.send(message_protocol.internal.serialize([client_id]))
 
-    def _on_eof(self, client_id, counter):
+    def _on_eof(self, client_id, counter, msg_hash):
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
             if counter > 1:
@@ -124,7 +124,10 @@ class Converter:
                 )
             else:
                 self._send_eof(client_id)
+                self._last_msg_hash = msg_hash
+                self._save_checkpoint()
                 self.eof_seen.discard(client_id)
+
         else:
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
@@ -141,8 +144,7 @@ class Converter:
             client_id = fields[0]
 
             if self._is_eof(fields):
-                self._on_eof(client_id, self._get_eof_counter(fields))
-                self._last_msg_hash = h
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
                 self._save_checkpoint()
                 ack()
                 return
