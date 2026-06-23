@@ -163,9 +163,11 @@ class AvgJoiner:
                         logging.error(
                             f"[QUERY {QUERY_NUMBER}] Error processing tx from disk: {e}"
                         )
-            os.remove(path)
-
         self._append_output_rows(client_id, output_batch)
+
+        with file_lock:
+            if os.path.exists(path):
+                os.remove(path)
 
     def _cleanup_client(self, client_id: str):
         client_dir = os.path.join(DATA_DIR, client_id)
@@ -255,7 +257,6 @@ class AvgJoiner:
                         message_protocol.internal.serialize([client_id, "EOF", counter])
                     )
 
-                # self._last_sp_hash = h
                 self._save_checkpoint()
                 ack()
                 return
