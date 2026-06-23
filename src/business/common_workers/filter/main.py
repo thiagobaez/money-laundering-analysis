@@ -200,14 +200,13 @@ class Filter:
             client_id = fields[0]
 
             h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
 
             if self._is_eof(fields):
                 self._on_eof(client_id, self._get_eof_counter(fields), h)
                 self._save_checkpoint()
-                ack()
-                return
-
-            if h == self._last_msg_hash:
                 ack()
                 return
 
