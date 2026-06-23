@@ -165,7 +165,7 @@ class Filter:
         else:
             self._send_output(message_protocol.internal.serialize([client_id, batch]))
 
-    def _on_eof(self, client_id, counter):
+    def _on_eof(self, client_id, counter, msg_hash):
         self._flush_batch_to_disk(client_id)
         self._send_disk_rows(client_id)
 
@@ -183,6 +183,8 @@ class Filter:
                     f"[QUERY {QUERY_NUMBER}] [FILTER] Sending EOF downstream for client {client_id} (first time, counter=1)"
                 )
                 self._send_output(message_protocol.internal.serialize([client_id]))
+                self._last_msg_hash = msg_hash
+                self._save_checkpoint()
                 self.eof_seen.discard(client_id)
         else:
             logging.error(
@@ -197,13 +199,14 @@ class Filter:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
+            h = checkpoint.msg_hash(message)
+
             if self._is_eof(fields):
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
                 self._save_checkpoint()
                 ack()
                 return
 
-            h = checkpoint.msg_hash(message)
             if h == self._last_msg_hash:
                 ack()
                 return
