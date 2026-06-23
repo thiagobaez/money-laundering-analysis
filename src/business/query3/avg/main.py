@@ -9,6 +9,7 @@ MOM_HOST = os.environ["MOM_HOST"]
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_QUEUES = os.environ["OUTPUT_QUEUES"].split(",")
+AVG_ID = os.environ.get("CONTAINER_NAME", "avg_unknown")
 
 
 class Avg:
@@ -69,7 +70,7 @@ class Avg:
                 q.send(message_protocol.internal.serialize([client_id, batch]))
 
         for q in self.output_queues:
-            q.send(message_protocol.internal.serialize([client_id]))
+            q.send(message_protocol.internal.serialize([client_id, "AVG_EOF", AVG_ID]))
 
     def _on_message(self, message, ack, nack):
         try:

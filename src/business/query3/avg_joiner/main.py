@@ -23,7 +23,7 @@ class AvgJoiner:
         self.eof_seen: set[str] = set()
         self.sp_eof_done: set[str] = set()
         self.avg_eof: set[str] = set()
-        self.avg_eof_counts: dict[str, int] = {}
+        self.avg_eof_seen: dict[str, set] = {}
         self.avg_results: dict[str, dict[str, float]] = {}
         self.avg_results_lock = threading.Lock()
         self.file_locks: dict[tuple, threading.Lock] = {}
@@ -56,7 +56,9 @@ class AvgJoiner:
         self.eof_seen = set(state.get("eof_seen", []))
         self.sp_eof_done = set(state.get("sp_eof_done", []))
         self.avg_eof = set(state.get("avg_eof", []))
-        self.avg_eof_counts = state.get("avg_eof_counts", {})
+        self.avg_eof_seen = {
+            k: set(v) for k, v in state.get("avg_eof_seen", {}).items()
+        }
         self.avg_results = state.get("avg_results", {})
         logging.info(f"[QUERY {QUERY_NUMBER}] [AVG_JOINER] Resumed from checkpoint")
 
@@ -70,7 +72,9 @@ class AvgJoiner:
                     "eof_seen": list(self.eof_seen),
                     "sp_eof_done": list(self.sp_eof_done),
                     "avg_eof": list(self.avg_eof),
-                    "avg_eof_counts": self.avg_eof_counts,
+                    "avg_eof_seen": {
+                        k: list(v) for k, v in self.avg_eof_seen.items()
+                    },
                     "avg_results": self.avg_results,
                 },
             )
@@ -294,16 +298,24 @@ class AvgJoiner:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 1:
-                logging.info(f"[QUERY {QUERY_NUMBER}] avg EOF client={client_id}")
-                self.avg_eof_counts[client_id] = (
-                    self.avg_eof_counts.get(client_id, 0) + 1
+            if len(fields) == 3 and fields[1] == "AVG_EOF":
+                avg_id = fields[2]
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] avg EOF client={client_id} avg_id={avg_id}"
                 )
-                if self.avg_eof_counts[client_id] < AVG_AMOUNT:
+                if client_id not in self.avg_eof_seen:
+                    self.avg_eof_seen[client_id] = set()
+
+                if avg_id in self.avg_eof_seen[client_id]:
+                    ack()
+                    return
+
+                self.avg_eof_seen[client_id].add(avg_id)
+                if len(self.avg_eof_seen[client_id]) < AVG_AMOUNT:
                     self._save_checkpoint()
                     ack()
                     return
-                del self.avg_eof_counts[client_id]
+                del self.avg_eof_seen[client_id]
                 with self.eof_coord_lock:
                     self.avg_eof.add(client_id)
                 self._try_send_eof(client_id)
