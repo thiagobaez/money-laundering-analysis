@@ -46,7 +46,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             exchange="",
             routing_key=self.queue_name,
             body=message,
-            properties=pika.BasicProperties(delivery_mode=1),
+            properties=pika.BasicProperties(delivery_mode=2),
         )
 
     def close(self):
@@ -110,7 +110,7 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
                 exchange=self.exchange_name,
                 routing_key=key,
                 body=message,
-                properties=pika.BasicProperties(delivery_mode=1),
+                properties=pika.BasicProperties(delivery_mode=2),
             )
 
     def close(self):
