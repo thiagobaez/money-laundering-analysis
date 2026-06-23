@@ -31,3 +31,4 @@ rabbitmq-data/
 # Datasets
 datasets/*.csv.gz
 datasets/*.csv
+expected
