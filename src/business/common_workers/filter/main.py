@@ -1,4 +1,5 @@
 import os
+import csv
 import logging
 import signal
 
@@ -49,6 +50,7 @@ class Filter:
         self.batches: dict[str, list] = {}
         self._last_msg_hash: str | None = None
         self._heartbeat = heartbeat
+        self._disk_counts: dict[str, int] = {}
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -78,12 +80,19 @@ class Filter:
 
     def _load_checkpoint(self):
         state = checkpoint.load(DATA_DIR)
-        if state is None:
-            return
-        self._last_msg_hash = state.get("last_msg_hash")
-        self.eof_seen = set(state.get("eof_seen", []))
-        self.batches = state.get("batches", {})
-        logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
+        if state is not None:
+            self._last_msg_hash = state.get("last_msg_hash")
+            self.eof_seen = set(state.get("eof_seen", []))
+            logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
+
+        if os.path.isdir(DATA_DIR):
+            for entry in os.listdir(DATA_DIR):
+                client_dir = os.path.join(DATA_DIR, entry)
+                if os.path.isdir(client_dir):
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
+                    )
+                    self._send_disk_rows(entry)
 
     def _save_checkpoint(self):
         checkpoint.save(
@@ -91,9 +100,35 @@ class Filter:
             {
                 "last_msg_hash": self._last_msg_hash,
                 "eof_seen": list(self.eof_seen),
-                "batches": self.batches,
             },
         )
+
+    def _file_path(self, client_id):
+        return os.path.join(DATA_DIR, client_id, "rows.csv")
+
+    def _flush_batch_to_disk(self, client_id):
+        rows = self.batches.pop(client_id, [])
+        if not rows:
+            return
+
+        path = self._file_path(client_id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        with open(path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+        self._disk_counts[client_id] = self._disk_counts.get(client_id, 0) + len(rows)
+
+    def _send_disk_rows(self, client_id):
+        path = self._file_path(client_id)
+        if not os.path.exists(path):
+            return
+
+        with open(path, "r", newline="") as f:
+            rows = list(csv.reader(f))
+        self._send_batch(client_id, rows)
+        os.remove(path)
+        self._disk_counts[client_id] = 0
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -119,9 +154,7 @@ class Filter:
         for q in self.output_queues:
             q.send(message)
 
-    def _flush_batch(self, client_id):
-        batch = self.batches.pop(client_id, [])
-
+    def _send_batch(self, client_id, batch):
         if not batch:
             return
 
@@ -133,9 +166,12 @@ class Filter:
             self._send_output(message_protocol.internal.serialize([client_id, batch]))
 
     def _on_eof(self, client_id, counter):
+        self._flush_batch_to_disk(client_id)
+        self._send_disk_rows(client_id)
+
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
-            logging.info(
+            logging.error(
                 f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}"
             )
             if counter > 1:
@@ -143,9 +179,15 @@ class Filter:
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
+                logging.error(
+                    f"[QUERY {QUERY_NUMBER}] [FILTER] Sending EOF downstream for client {client_id} (first time, counter=1)"
+                )
                 self._send_output(message_protocol.internal.serialize([client_id]))
                 self.eof_seen.discard(client_id)
         else:
+            logging.error(
+                f"[QUERY {QUERY_NUMBER}] [FILTER] client {client_id} already in eof_seen, re-enqueuing counter={counter}"
+            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -156,7 +198,6 @@ class Filter:
             client_id = fields[0]
 
             if self._is_eof(fields):
-                self._flush_batch(client_id)
                 self._on_eof(client_id, self._get_eof_counter(fields))
                 self._save_checkpoint()
                 ack()
@@ -173,11 +214,13 @@ class Filter:
                 if self._passes(tx):
                     self.batches.setdefault(client_id, []).append(tx.to_fields())
 
-                    if len(self.batches[client_id]) >= BATCH_SIZE:
-                        self._flush_batch(client_id)
-
+            self._flush_batch_to_disk(client_id)
             self._last_msg_hash = h
             self._save_checkpoint()
+
+            if self._disk_counts.get(client_id, 0) >= BATCH_SIZE:
+                self._send_disk_rows(client_id)
+
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
