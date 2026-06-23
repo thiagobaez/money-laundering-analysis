@@ -33,16 +33,13 @@ def generate_compose_all(
 
     num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_detect + 1
 
- 
     q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
     q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
     q4_og_rks = ",".join([f"og_detect_{i + 1}" for i in range(q4_n_detect)])
     q4_sg_rks = ",".join([f"sg_detect_{i + 1}" for i in range(q4_n_detect)])
 
-
     q3_avg_joiner_rks = ",".join([f"avg_joiner_{i}" for i in range(q3_n_avg_joiner)])
     q3_avg_rks = ",".join([f"avg_queue_{i}" for i in range(q3_n_avg)])
-
 
     for i in range(q4_n_detect):
         services[f"q4_sg_detect_{i}"] = {

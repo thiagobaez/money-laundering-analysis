@@ -12,7 +12,6 @@ def generate_compose_q1(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-
     for i in range(n_filter_amount):
         services[f"q1_filter_amount_{i}"] = {
             "build": {

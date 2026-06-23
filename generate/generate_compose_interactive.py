@@ -21,7 +21,9 @@ _DATASETS_DIR = os.path.join(os.path.dirname(__file__), "..", "datasets")
 def _list_datasets() -> list:
     try:
         files = sorted(
-            f for f in os.listdir(_DATASETS_DIR) if os.path.isfile(os.path.join(_DATASETS_DIR, f))
+            f
+            for f in os.listdir(_DATASETS_DIR)
+            if os.path.isfile(os.path.join(_DATASETS_DIR, f))
         )
         return files
     except FileNotFoundError:

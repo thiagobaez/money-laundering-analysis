@@ -18,12 +18,8 @@ def generate_compose_q4(
     destination_routing_keys = ",".join(
         [f"tx_destination_{i + 1}" for i in range(n_detect)]
     )
-    og_detect_routing_keys = ",".join(
-        [f"og_detect_{i + 1}" for i in range(n_detect)]
-    )
-    sg_detect_routing_keys = ",".join(
-        [f"sg_detect_{i + 1}" for i in range(n_detect)]
-    )
+    og_detect_routing_keys = ",".join([f"og_detect_{i + 1}" for i in range(n_detect)])
+    sg_detect_routing_keys = ",".join([f"sg_detect_{i + 1}" for i in range(n_detect)])
 
     for i in range(n_detect):
         services[f"q4_sg_detect_{i}"] = {
@@ -51,8 +47,7 @@ def generate_compose_q4(
         }
 
     sg_detect_depends = {
-        f"q4_sg_detect_{i}": {"condition": "service_started"}
-        for i in range(n_detect)
+        f"q4_sg_detect_{i}": {"condition": "service_started"} for i in range(n_detect)
     }
     for i in range(n_detect):
         services[f"q4_og_detect_{i}"] = {
@@ -99,12 +94,10 @@ def generate_compose_q4(
         }
 
     og_detect_depends = {
-        f"q4_og_detect_{i}": {"condition": "service_started"}
-        for i in range(n_detect)
+        f"q4_og_detect_{i}": {"condition": "service_started"} for i in range(n_detect)
     }
     dt_detect_depends = {
-        f"q4_dt_detect_{i}": {"condition": "service_started"}
-        for i in range(n_detect)
+        f"q4_dt_detect_{i}": {"condition": "service_started"} for i in range(n_detect)
     }
     for i in range(n_split):
         services[f"q4_split_{i}"] = {

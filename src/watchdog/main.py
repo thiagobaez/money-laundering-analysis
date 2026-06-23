@@ -42,7 +42,9 @@ class Watchdog:
             for name, ts in snapshot.items():
                 if now - ts <= HEARTBEAT_TIMEOUT:
                     continue
-                logging.info(f"No heartbeat from {name} for {now - ts:.0f}s, restarting...")
+                logging.info(
+                    f"No heartbeat from {name} for {now - ts:.0f}s, restarting..."
+                )
                 try:
                     self._docker.containers.get(name).start()
                     logging.info(f"Restarted: {name}")
