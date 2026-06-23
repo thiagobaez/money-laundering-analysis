@@ -3,10 +3,11 @@ import logging
 import signal
 import hashlib
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 EXCHANGE_NAME = os.environ["EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEYS = os.environ["ORIGIN_ROUTING_KEYS"].split(",")
@@ -16,12 +17,15 @@ BATCH_SIZE = int(os.environ["BATCH_SIZE"])
 
 
 class Split:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
+        self._heartbeat = heartbeat
         self.closed = False
         self.eof_received_by_client = []
+        self.eof_done_by_client = []
         self._origin_batches = {}
         self._dest_batches = {}
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._last_msg_hash: str | None = None
+        self._load_checkpoint()
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
         )
@@ -29,10 +33,38 @@ class Split:
             MOM_HOST, EXCHANGE_NAME, ORIGIN_ROUTING_KEYS + DESTINATION_ROUTING_KEYS
         )
 
-    def _handle_sigterm(self, signum, frame):
-        self.close()
-        if self._prev_sigterm_handler:
-            self._prev_sigterm_handler(signum, frame)
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.eof_received_by_client = state.get("eof_received_by_client", [])
+        self.eof_done_by_client = state.get("eof_done_by_client", [])
+        self._origin_batches = {
+            tuple(k.split("|||", 1)): v
+            for k, v in state.get("origin_batches", {}).items()
+        }
+        self._dest_batches = {
+            tuple(k.split("|||", 1)): v
+            for k, v in state.get("dest_batches", {}).items()
+        }
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_received_by_client": self.eof_received_by_client,
+                "eof_done_by_client": self.eof_done_by_client,
+                "origin_batches": {
+                    f"{k[0]}|||{k[1]}": v for k, v in self._origin_batches.items()
+                },
+                "dest_batches": {
+                    f"{k[0]}|||{k[1]}": v for k, v in self._dest_batches.items()
+                },
+            },
+        )
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -70,23 +102,35 @@ class Split:
             self._flush_dest_batch(client_id, key)
 
     def _on_eof(self, client_id, counter):
+        if client_id in self.eof_done_by_client:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] [SPLIT] Discarding stale EOF for client {client_id}"
+            )
+            return
         self._flush_all_batches(client_id)
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
             logging.info(
-                f"[QUERY {QUERY_NUMBER}] [SPLIT] EOF received for client {client_id}"
+                f"[QUERY {QUERY_NUMBER}] [SPLIT] EOF received for client {client_id} (counter={counter})"
             )
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] [SPLIT] All EOFs received for client {client_id}, forwarding downstream"
+                )
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
+                self.eof_done_by_client.append(client_id)
         else:
+            logging.info(
+                f"[QUERY {QUERY_NUMBER}] [SPLIT] Re-enqueuing EOF for client {client_id} (counter={counter})"
+            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
-            
+
     def _on_message(self, message, ack, nack):
         if self.closed:
             ack()
@@ -97,6 +141,12 @@ class Split:
 
             if self._is_eof(fields):
                 self._on_eof(client_id, self._get_eof_counter(fields))
+                self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
                 ack()
                 return
 
@@ -114,9 +164,7 @@ class Split:
                     )
                 ]
 
-                origin_batch = self._origin_batches.setdefault(
-                    (client_id, origin_key), []
-                )
+                origin_batch = self._origin_batches.setdefault((client_id, origin_key), [])
                 origin_batch.append(row)
                 if len(origin_batch) >= BATCH_SIZE:
                     self._flush_origin_batch(client_id, origin_key)
@@ -126,6 +174,8 @@ class Split:
                 if len(dest_batch) >= BATCH_SIZE:
                     self._flush_dest_batch(client_id, dest_key)
 
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
@@ -135,6 +185,9 @@ class Split:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.input_queue.stop_consuming()
@@ -147,7 +200,11 @@ class Split:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
-    worker = Split()
+    from common.heartbeat import start_if_configured
+
+    heartbeat = start_if_configured()
+    worker = Split(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

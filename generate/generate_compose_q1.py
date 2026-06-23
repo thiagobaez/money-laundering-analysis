@@ -8,10 +8,13 @@ def generate_compose_q1(
     n_filter_usd: int = 3,
     n_filter_amount: int = 3,
     batch_size: int = 10000,
+    chaos_monkey: bool = False,
+    chaos_kill_interval: int = 30,
+    watchdog: bool = False,
+    watchdog_timeout: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
-
 
     for i in range(n_filter_amount):
         services[f"q1_filter_amount_{i}"] = {
@@ -33,6 +36,7 @@ def generate_compose_q1(
                 "MAX_AMOUNT=50",
                 "ADD_QUERY_ID=True",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=q1_filter_amount_{i}",
             ],
         }
 
@@ -60,6 +64,7 @@ def generate_compose_q1(
                 "OUTPUT_QUEUES=q1_filter_amount",
                 "USD_ONLY=True",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=filter_usd_{i}",
             ],
         }
 
@@ -111,6 +116,31 @@ def generate_compose_q1(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if chaos_monkey:
+        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        services["chaos_monkey"] = {
+            "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
+            "container_name": "chaos_monkey",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                f"KILL_INTERVAL={chaos_kill_interval}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
+    if watchdog:
+        services["watchdog"] = {
+            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+            "container_name": "watchdog",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                "MOM_HOST=rabbitmq",
+                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
     return {"services": services}
 
 
@@ -121,6 +151,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=10000)
     parser.add_argument("--filter-usd", type=int, default=3)
     parser.add_argument("--filter-amount", type=int, default=3)
+    parser.add_argument("--chaos-monkey", action="store_true", default=False)
+    parser.add_argument("--chaos-kill-interval", type=int, default=30)
+    parser.add_argument("--watchdog", action="store_true", default=False)
+    parser.add_argument("--watchdog-timeout", type=int, default=30)
     args = parser.parse_args()
 
     compose = generate_compose_q1(
@@ -128,6 +162,10 @@ def main():
         n_filter_usd=args.filter_usd,
         n_filter_amount=args.filter_amount,
         batch_size=args.batch_size,
+        chaos_monkey=args.chaos_monkey,
+        chaos_kill_interval=args.chaos_kill_interval,
+        watchdog=args.watchdog,
+        watchdog_timeout=args.watchdog_timeout,
     )
 
     with open(args.output, "w") as f:

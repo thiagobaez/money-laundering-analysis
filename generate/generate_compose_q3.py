@@ -10,6 +10,10 @@ def generate_compose_q3(
     n_avg: int = 1,
     n_avg_joiner: int = 1,
     batch_size: int = 100,
+    chaos_monkey: bool = False,
+    chaos_kill_interval: int = 30,
+    watchdog: bool = False,
+    watchdog_timeout: int = 30,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -67,6 +71,7 @@ def generate_compose_q3(
                 f"FILTER_AMOUNT={n_filter_usd}",
                 "USD_ONLY=True",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=filter_usd_{i}",
             ],
         }
 
@@ -89,6 +94,7 @@ def generate_compose_q3(
                 f"AVG_AMOUNT={n_avg}",
                 f"DATA_DIR=/data/joiner_{i}",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=avg_joiner_{i}",
             ],
         }
 
@@ -109,6 +115,7 @@ def generate_compose_q3(
                 f"INPUT_QUEUE=avg_queue_{i}",
                 f"OUTPUT_QUEUES={avg_joiner_routing_keys}",
                 f"AVG_AMOUNT={n_avg}",
+                f"CONTAINER_NAME=avg_{i}",
             ],
         }
 
@@ -140,6 +147,7 @@ def generate_compose_q3(
                 "SECOND_PERIOD_LE=2022-09-14",
                 f"SPLIT_AMOUNT={n_split_date}",
                 f"BATCH_SIZE={batch_size}",
+                f"CONTAINER_NAME=split_date_{i}",
             ],
         }
 
@@ -157,6 +165,31 @@ def generate_compose_q3(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if chaos_monkey:
+        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        services["chaos_monkey"] = {
+            "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
+            "container_name": "chaos_monkey",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                f"KILL_INTERVAL={chaos_kill_interval}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
+    if watchdog:
+        services["watchdog"] = {
+            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+            "container_name": "watchdog",
+            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+            "environment": [
+                "MOM_HOST=rabbitmq",
+                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+            ],
+            "depends_on": dict(rabbitmq_healthy),
+        }
+
     return {"services": services}
 
 
@@ -169,6 +202,10 @@ def main():
     parser.add_argument("--split-date", type=int, default=1)
     parser.add_argument("--avg", type=int, default=1)
     parser.add_argument("--avg-joiner", type=int, default=1)
+    parser.add_argument("--chaos-monkey", action="store_true", default=False)
+    parser.add_argument("--chaos-kill-interval", type=int, default=30)
+    parser.add_argument("--watchdog", action="store_true", default=False)
+    parser.add_argument("--watchdog-timeout", type=int, default=30)
     args = parser.parse_args()
 
     compose = generate_compose_q3(
@@ -178,6 +215,10 @@ def main():
         n_avg=args.avg,
         n_avg_joiner=args.avg_joiner,
         batch_size=args.batch_size,
+        chaos_monkey=args.chaos_monkey,
+        chaos_kill_interval=args.chaos_kill_interval,
+        watchdog=args.watchdog,
+        watchdog_timeout=args.watchdog_timeout,
     )
 
     with open(args.output, "w") as f:

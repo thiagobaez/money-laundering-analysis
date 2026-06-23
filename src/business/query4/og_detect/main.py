@@ -5,6 +5,8 @@ import signal
 import hashlib
 
 from common import middleware, message_protocol
+from common.heartbeat import start_if_configured
+
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -18,10 +20,10 @@ DATA_DIR = "/data"
 
 
 class OgDetect:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self._logs = {}
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._heartbeat = heartbeat
         self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
         )
@@ -51,6 +53,7 @@ class OgDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
+        logging.info(f"[QUERY {QUERY_NUMBER}] [OG_DETECT] EOF received for client {client_id}")
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -100,6 +103,7 @@ class OgDetect:
                 from_account = row[2]
                 to_account = row[4]
                 log.write(f"{from_account}\t{to_account}\n".encode())
+            log.flush()
 
             ack()
         except Exception as e:
@@ -110,6 +114,9 @@ class OgDetect:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.input_queue.stop_consuming()
@@ -125,7 +132,9 @@ class OgDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
-    worker = OgDetect()
+    heartbeat = start_if_configured()
+    worker = OgDetect(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

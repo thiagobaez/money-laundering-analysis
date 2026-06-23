@@ -193,7 +193,7 @@ def compare_query(query_num: int, actual_base: str, expected_base: str) -> bool:
 
 
 def compare_client(client: dict, queries: list[int]) -> bool:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Cliente: {client['service']}  |  Dataset: {client['dataset']}")
     print(f"  output:   {client['output_dir']}")
     print(f"  expected: {client['expected_dir']}")
@@ -230,7 +230,7 @@ def main():
         ok = compare_client(client, queries)
         all_ok = all_ok and ok
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if all_ok:
         print("Resultado final: TODAS LAS QUERIES COINCIDEN")
         sys.exit(0)

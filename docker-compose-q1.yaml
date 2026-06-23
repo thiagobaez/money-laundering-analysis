@@ -9,6 +9,8 @@ services:
         condition: service_healthy
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q1_filter_amount_0:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -18,6 +20,7 @@ services:
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=q1_filter_amount_0
   q1_filter_amount_1:
     build:
       context: ./src/
@@ -27,6 +30,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q1_filter_amount_1:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -36,6 +41,7 @@ services:
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=q1_filter_amount_1
   q1_filter_amount_2:
     build:
       context: ./src/
@@ -45,6 +51,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q1_filter_amount_2:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -54,6 +62,7 @@ services:
     - MAX_AMOUNT=50
     - ADD_QUERY_ID=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=q1_filter_amount_2
   filter_usd_0:
     build:
       context: ./src/
@@ -67,6 +76,8 @@ services:
         condition: service_started
       q1_filter_amount_2: &id004
         condition: service_started
+    volumes:
+    - ./data/filter_usd_0:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -76,6 +87,7 @@ services:
     - OUTPUT_QUEUES=q1_filter_amount
     - USD_ONLY=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_usd_0
   filter_usd_1:
     build:
       context: ./src/
@@ -86,6 +98,8 @@ services:
       q1_filter_amount_0: *id002
       q1_filter_amount_1: *id003
       q1_filter_amount_2: *id004
+    volumes:
+    - ./data/filter_usd_1:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -95,6 +109,7 @@ services:
     - OUTPUT_QUEUES=q1_filter_amount
     - USD_ONLY=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_usd_1
   filter_usd_2:
     build:
       context: ./src/
@@ -105,6 +120,8 @@ services:
       q1_filter_amount_0: *id002
       q1_filter_amount_1: *id003
       q1_filter_amount_2: *id004
+    volumes:
+    - ./data/filter_usd_2:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -114,6 +131,7 @@ services:
     - OUTPUT_QUEUES=q1_filter_amount
     - USD_ONLY=True
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_usd_2
   client0:
     container_name: client
     build:
@@ -151,11 +169,14 @@ services:
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
+    - BATCH_SIZE=1000
   rabbitmq:
     build:
       context: ./src/
       dockerfile: rabbitmq/Dockerfile
     container_name: rabbitmq
+    volumes:
+    - ./data/rabbitmq:/var/lib/rabbitmq
     environment:
     - RABBITMQ_LOG_LEVELS=error
     healthcheck:
@@ -167,3 +188,27 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
+  watchdog:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    depends_on:
+      rabbitmq: *id001
+  chaos_monkey:
+    build:
+      context: ./src/
+      dockerfile: chaos_monkey/Dockerfile
+    container_name: chaos_monkey
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - KILL_INTERVAL=60
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,watchdog,gateway,client
+    depends_on:
+      rabbitmq: *id001

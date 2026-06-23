@@ -4,10 +4,11 @@ import logging
 import signal
 import threading
 
-from common import middleware, message_protocol
+from common import middleware, message_protocol, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 ORIGIN_EXCHANGE_NAME = os.environ["ORIGIN_EXCHANGE_NAME"]
 ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 DESTINATION_EXCHANGE_NAME = os.environ["DESTINATION_EXCHANGE_NAME"]
@@ -17,14 +18,12 @@ MIN_COMMON = int(os.environ["MIN_COMMON"])
 NUM_OG_WORKERS = int(os.environ.get("NUM_OG_WORKERS", "1"))
 NUM_DT_WORKERS = int(os.environ.get("NUM_DT_WORKERS", "1"))
 
-DATA_DIR = "/data"
-
 
 class SgDetect:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.closed = False
         self._lock = threading.Lock()
-        self._prev_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_sigterm)
+        self._heartbeat = heartbeat
         self.origins_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, ORIGIN_EXCHANGE_NAME, [ORIGIN_ROUTING_KEY]
         )
@@ -36,6 +35,31 @@ class SgDetect:
         )
         self.origins_eofs: dict[str, int] = {}
         self.destinations_eofs: dict[str, int] = {}
+        self._last_origins_hash: str | None = None
+        self._last_destinations_hash: str | None = None
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_origins_hash = state.get("last_origins_hash")
+        self._last_destinations_hash = state.get("last_destinations_hash")
+        self.origins_eofs = state.get("origins_eofs", {})
+        self.destinations_eofs = state.get("destinations_eofs", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        with self._lock:
+            checkpoint.save(
+                DATA_DIR,
+                {
+                    "last_origins_hash": self._last_origins_hash,
+                    "last_destinations_hash": self._last_destinations_hash,
+                    "origins_eofs": self.origins_eofs,
+                    "destinations_eofs": self.destinations_eofs,
+                },
+            )
 
     def _handle_sigterm(self, signum, frame):
         self.close()
@@ -61,8 +85,18 @@ class SgDetect:
                     self.origins_eofs[client_id] = (
                         self.origins_eofs.get(client_id, 0) + 1
                     )
-                    if self.origins_eofs[client_id] >= NUM_OG_WORKERS:
+                    count = self.origins_eofs[client_id]
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Origins EOF received for client {client_id} ({count}/{NUM_OG_WORKERS})"
+                    )
+                    if count >= NUM_OG_WORKERS:
                         self._check_and_emit(client_id)
+                self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_origins_hash:
                 ack()
                 return
 
@@ -74,6 +108,8 @@ class SgDetect:
             with open(os.path.join(origins_dir, f"{origin_account}.csv"), "w") as f:
                 f.write("\n".join(destinations) + "\n")
 
+            self._last_origins_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing origin: {e}")
@@ -92,8 +128,18 @@ class SgDetect:
                     self.destinations_eofs[client_id] = (
                         self.destinations_eofs.get(client_id, 0) + 1
                     )
-                    if self.destinations_eofs[client_id] >= NUM_DT_WORKERS:
+                    count = self.destinations_eofs[client_id]
+                    logging.info(
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Destinations EOF received for client {client_id} ({count}/{NUM_DT_WORKERS})"
+                    )
+                    if count >= NUM_DT_WORKERS:
                         self._check_and_emit(client_id)
+                self._save_checkpoint()
+                ack()
+                return
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_destinations_hash:
                 ack()
                 return
 
@@ -105,6 +151,8 @@ class SgDetect:
             with open(os.path.join(dest_dir, f"{dest_account}.csv"), "w") as f:
                 f.write("\n".join(origins_of_dest) + "\n")
 
+            self._last_destinations_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing destination: {e}")
@@ -116,6 +164,7 @@ class SgDetect:
         dt_done = self.destinations_eofs.get(client_id, 0) >= NUM_DT_WORKERS
         if not (og_done and dt_done):
             return
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Both sides complete for client {client_id}, emitting results")
 
         self._emit_results(client_id)
 
@@ -176,6 +225,9 @@ class SgDetect:
         destinations_thread.join()
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.closed = True
             self.origins_queue.stop_consuming()
@@ -190,7 +242,11 @@ class SgDetect:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
-    worker = SgDetect()
+    from common.heartbeat import start_if_configured
+
+    heartbeat = start_if_configured()
+    worker = SgDetect(heartbeat)
+    signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
     except Exception as e:

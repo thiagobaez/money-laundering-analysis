@@ -5,9 +5,10 @@ import time
 
 import requests
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 FRANKFURTER_BASE = os.environ.get("FRANKFURTER_BASE", "https://api.frankfurter.dev/v2")
 BTC_USD_RATES_BY_DATE = {
     "2022-09-01": 19793.1,
@@ -35,9 +36,11 @@ OUTPUT_ROUTING_KEYS = (
 
 
 class Converter:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self._rate_lookup: dict[tuple[str, str], float] = {}
         self.eof_seen: set[str] = set()
+        self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -56,6 +59,24 @@ class Converter:
             self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
                 MOM_HOST, OUTPUT_QUEUE
             )
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.eof_seen = set(state.get("eof_seen", []))
+        logging.info("[CONVERTER] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_seen": list(self.eof_seen),
+            },
+        )
 
     def _get_rate(self, iso_code: str, date_iso: str) -> float:
         key = (date_iso, iso_code)
@@ -94,7 +115,7 @@ class Converter:
     def _send_eof(self, client_id):
         self.output_queue.send(message_protocol.internal.serialize([client_id]))
 
-    def _on_eof(self, client_id, counter):
+    def _on_eof(self, client_id, counter, msg_hash):
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
             if counter > 1:
@@ -103,7 +124,10 @@ class Converter:
                 )
             else:
                 self._send_eof(client_id)
+                self._last_msg_hash = msg_hash
+                self._save_checkpoint()
                 self.eof_seen.discard(client_id)
+
         else:
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
@@ -111,11 +135,17 @@ class Converter:
 
     def _on_message(self, message, ack, nack):
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -128,6 +158,8 @@ class Converter:
                 self.output_queue.send(
                     message_protocol.internal.serialize([client_id, converted_rows])
                 )
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[CONVERTER] Error processing message: {e}")
@@ -138,6 +170,9 @@ class Converter:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.output_queue.close()
@@ -149,7 +184,10 @@ class Converter:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
-    worker = Converter()
+    from common.heartbeat import start_if_configured
+
+    heartbeat = start_if_configured()
+    worker = Converter(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()

@@ -21,7 +21,9 @@ _DATASETS_DIR = os.path.join(os.path.dirname(__file__), "..", "datasets")
 def _list_datasets() -> list:
     try:
         files = sorted(
-            f for f in os.listdir(_DATASETS_DIR) if os.path.isfile(os.path.join(_DATASETS_DIR, f))
+            f
+            for f in os.listdir(_DATASETS_DIR)
+            if os.path.isfile(os.path.join(_DATASETS_DIR, f))
         )
         return files
     except FileNotFoundError:
@@ -42,6 +44,23 @@ def _ask(label: str, default):
     except ValueError:
         print(f"    Valor invalido, se usa el default: {default}")
         return default
+
+
+def _ask_bool(label: str, default: bool) -> bool:
+    default_str = "s" if default else "n"
+    try:
+        raw = input(f"  {label:<28} [s/n, default={default_str}]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(0)
+    if raw == "":
+        return default
+    if raw in ("s", "si", "y", "yes"):
+        return True
+    if raw in ("n", "no"):
+        return False
+    print(f"    Valor invalido, se usa el default: {default_str}")
+    return default
 
 
 def _ask_file(label: str, default: str) -> str:
@@ -93,9 +112,31 @@ def _gen_q1():
     n_filter_usd = _ask("filter_usd   (workers)", 3)
     n_filter_amount = _ask("filter_amount (workers)", 3)
     batch_size = _ask("batch_size", 10000)
+
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-q1.yaml")
     _dump(
-        generate_compose_q1(input_files, n_filter_usd, n_filter_amount, batch_size),
+        generate_compose_q1(
+            input_files,
+            n_filter_usd,
+            n_filter_amount,
+            batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
+        ),
         output,
     )
 
@@ -108,10 +149,32 @@ def _gen_q3():
     n_avg = _ask("avg          (workers)", 2)
     n_avg_joiner = _ask("avg_joiner   (workers)", 5)
     batch_size = _ask("batch_size", 1000)
+
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-q3.yaml")
     _dump(
         generate_compose_q3(
-            input_files, n_filter_usd, n_split_date, n_avg, n_avg_joiner, batch_size
+            input_files,
+            n_filter_usd,
+            n_split_date,
+            n_avg,
+            n_avg_joiner,
+            batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
         ),
         output,
     )
@@ -125,6 +188,19 @@ def _gen_q4():
     n_split = _ask("split        (workers)", 3)
     n_detect = _ask("og/dt/sg_det (workers)", 3)
     batch_size = _ask("batch_size", 20000)
+
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-q4.yaml")
     _dump(
         generate_compose_q4(
@@ -134,6 +210,10 @@ def _gen_q4():
             n_split,
             n_detect,
             batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
         ),
         output,
     )
@@ -146,10 +226,31 @@ def _gen_q5():
     n_converter = _ask("converter     (workers)", 3)
     n_filter_amount = _ask("filter_amount (workers)", 2)
     batch_size = _ask("batch_size", 10000)
+
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-q5.yaml")
     _dump(
         generate_compose_q5(
-            n_filter_fmt, n_converter, n_filter_amount, input_files, batch_size
+            n_filter_fmt,
+            n_converter,
+            n_filter_amount,
+            input_files,
+            batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
         ),
         output,
     )
@@ -185,6 +286,18 @@ def _gen_all():
     q5_n_filter_amount = _ask("  filter_amount (workers)", 2)
     q5_batch_size = _ask("  batch_size", 10000)
 
+    print("  -- Chaos Monkey --")
+    use_chaos = _ask_bool("  agregar chaos monkey?", False)
+    chaos_kill_interval = 30
+    if use_chaos:
+        chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+
+    print("  -- Watchdog --")
+    use_watchdog = _ask_bool("  agregar watchdog?", False)
+    watchdog_timeout = 30
+    if use_watchdog:
+        watchdog_timeout = _ask("  heartbeat timeout (segundos)", 30)
+
     output = _ask("output file", "docker-compose-all.yaml")
 
     _dump(
@@ -206,6 +319,10 @@ def _gen_all():
             q5_n_converter=q5_n_converter,
             q5_n_filter_amount=q5_n_filter_amount,
             q5_batch_size=q5_batch_size,
+            chaos_monkey=use_chaos,
+            chaos_kill_interval=chaos_kill_interval,
+            watchdog=use_watchdog,
+            watchdog_timeout=watchdog_timeout,
         ),
         output,
     )

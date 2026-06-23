@@ -2,17 +2,21 @@ import os
 import logging
 import signal
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 OUTPUT_QUEUES = os.environ["OUTPUT_QUEUES"].split(",")
+AVG_ID = os.environ.get("CONTAINER_NAME", "avg_unknown")
 
 
 class Avg:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.accum: dict[str, dict[str, list]] = {}
+        self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -22,6 +26,24 @@ class Avg:
             middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
             for q in OUTPUT_QUEUES
         ]
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.accum = state.get("accum", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [AVG] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "accum": self.accum,
+            },
+        )
 
     def _parse_transaction(self, fields):
         return transaction_item.TransactionItem(*fields)
@@ -38,21 +60,36 @@ class Avg:
             avg = suma / count
             batch.append([payment_format, avg])
 
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [AVG] Flushing EOF for client {client_id}, "
+            f"{len(batch)} payment formats, sending to {len(self.output_queues)} queues"
+        )
+
         if batch:
             for q in self.output_queues:
                 q.send(message_protocol.internal.serialize([client_id, batch]))
 
         for q in self.output_queues:
-            q.send(message_protocol.internal.serialize([client_id]))
+            q.send(message_protocol.internal.serialize([client_id, "AVG_EOF", AVG_ID]))
 
     def _on_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
+                logging.info(
+                    f"[QUERY {QUERY_NUMBER}] [AVG] EOF received for client {client_id}"
+                )
+
                 self._flush(client_id)
+                self._last_msg_hash = h
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -69,6 +106,8 @@ class Avg:
                 client_data[fmt][0] += tx.get_amount_paid()
                 client_data[fmt][1] += 1
 
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
 
         except Exception as e:
@@ -80,6 +119,9 @@ class Avg:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
@@ -92,7 +134,10 @@ class Avg:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
-    worker = Avg()
+    from common.heartbeat import start_if_configured
+
+    heartbeat = start_if_configured()
+    worker = Avg(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()

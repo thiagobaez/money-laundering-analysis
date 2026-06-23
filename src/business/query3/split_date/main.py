@@ -2,10 +2,11 @@ import os
 import logging
 import signal
 
-from common import middleware, message_protocol, transaction_item
+from common import middleware, message_protocol, transaction_item, checkpoint
 
 QUERY_NUMBER = int(os.environ["QUERY_NUMBER"])
 MOM_HOST = os.environ["MOM_HOST"]
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 FIRST_PERIOD_QUEUES = os.environ["FIRST_PERIOD_QUEUES"].split(",")
 SECOND_PERIOD_QUEUE = os.environ["SECOND_PERIOD_QUEUE"]
@@ -18,10 +19,12 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
 
 
 class SplitDate:
-    def __init__(self):
+    def __init__(self, heartbeat=None):
         self.eof_seen: set[str] = set()
         self.first_batches: dict[str, dict[int, list]] = {}
         self.second_batches: dict[str, list] = {}
+        self._last_msg_hash: str | None = None
+        self._heartbeat = heartbeat
 
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, INPUT_QUEUE
@@ -32,6 +35,34 @@ class SplitDate:
         ]
         self.second_period_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, SECOND_PERIOD_QUEUE
+        )
+        self._load_checkpoint()
+
+    def _load_checkpoint(self):
+        state = checkpoint.load(DATA_DIR)
+        if state is None:
+            return
+        self._last_msg_hash = state.get("last_msg_hash")
+        self.eof_seen = set(state.get("eof_seen", []))
+        self.first_batches = {
+            client_id: {int(k): v for k, v in per_idx.items()}
+            for client_id, per_idx in state.get("first_batches", {}).items()
+        }
+        self.second_batches = state.get("second_batches", {})
+        logging.info(f"[QUERY {QUERY_NUMBER}] [SPLIT_DATE] Resumed from checkpoint")
+
+    def _save_checkpoint(self):
+        checkpoint.save(
+            DATA_DIR,
+            {
+                "last_msg_hash": self._last_msg_hash,
+                "eof_seen": list(self.eof_seen),
+                "first_batches": {
+                    client_id: {str(k): v for k, v in per_idx.items()}
+                    for client_id, per_idx in self.first_batches.items()
+                },
+                "second_batches": self.second_batches,
+            },
         )
 
     def _is_eof(self, fields):
@@ -51,9 +82,6 @@ class SplitDate:
         batch = self.first_batches.get(client_id, {}).pop(idx, [])
 
         if batch:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] sending first_period batch client={client_id} queue_idx={idx} rows={len(batch)}"
-            )
             self.first_period_queues[idx].send(
                 message_protocol.internal.serialize([client_id, batch])
             )
@@ -61,9 +89,6 @@ class SplitDate:
     def _flush_second_batch(self, client_id):
         batch = self.second_batches.pop(client_id, [])
         if batch:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] sending second_period batch client={client_id} rows={len(batch)}"
-            )
             self.second_period_queue.send(
                 message_protocol.internal.serialize([client_id, batch])
             )
@@ -74,7 +99,7 @@ class SplitDate:
         self.first_batches.pop(client_id, None)
         self._flush_second_batch(client_id)
 
-    def _on_eof(self, client_id, counter):
+    def _on_eof(self, client_id, counter, msg_hash):
         eof = message_protocol.internal.serialize([client_id])
         logging.info(
             f"[QUERY {QUERY_NUMBER}] _on_eof called client={client_id} counter={counter}"
@@ -92,6 +117,8 @@ class SplitDate:
                 for q in self.first_period_queues:
                     q.send(eof)
                 self.second_period_queue.send(eof)
+                self._last_msg_hash = msg_hash
+                self._save_checkpoint()
                 self.eof_seen.discard(client_id)
         else:
             self.input_queue.send(
@@ -99,17 +126,22 @@ class SplitDate:
             )
 
     def _on_message(self, message, ack, nack):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Received message")
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
 
             if self._is_eof(fields):
                 logging.info(
                     f"[QUERY {QUERY_NUMBER}] EOF received for client_id={client_id}"
                 )
                 self._flush_all_batches(client_id)
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
+                self._save_checkpoint()
                 ack()
                 return
 
@@ -128,6 +160,8 @@ class SplitDate:
                     if len(self.second_batches[client_id]) >= BATCH_SIZE:
                         self._flush_second_batch(client_id)
 
+            self._last_msg_hash = h
+            self._save_checkpoint()
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")
@@ -138,6 +172,9 @@ class SplitDate:
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
+        if self._heartbeat:
+            self._heartbeat.stop()
+            self._heartbeat = None
         try:
             self.input_queue.stop_consuming()
             self.input_queue.close()
@@ -151,7 +188,10 @@ class SplitDate:
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
     logging.basicConfig(level=logging.ERROR)
-    worker = SplitDate()
+    from common.heartbeat import start_if_configured
+
+    heartbeat = start_if_configured()
+    worker = SplitDate(heartbeat)
     signal.signal(signal.SIGTERM, lambda s, f: worker.close())
     try:
         worker.run()
