@@ -72,9 +72,7 @@ class AvgJoiner:
                     "eof_seen": list(self.eof_seen),
                     "sp_eof_done": list(self.sp_eof_done),
                     "avg_eof": list(self.avg_eof),
-                    "avg_eof_seen": {
-                        k: list(v) for k, v in self.avg_eof_seen.items()
-                    },
+                    "avg_eof_seen": {k: list(v) for k, v in self.avg_eof_seen.items()},
                     "avg_results": self.avg_results,
                 },
             )
@@ -206,7 +204,7 @@ class AvgJoiner:
         for payment_format, avg in client_avgs.items():
             self._flush_to_output(client_id, payment_format, avg)
 
-    def _try_send_eof(self, client_id: str):
+    def _try_send_eof(self, client_id: str, msg_hash: str):
         with self.eof_coord_lock:
             if client_id not in self.sp_eof_done or client_id not in self.avg_eof:
                 return
@@ -218,6 +216,10 @@ class AvgJoiner:
                 [client_id, QUERY_NUMBER, "EOF", worker_id]
             )
         )
+
+        self._last_sp_hash = msg_hash
+        self._save_checkpoint()
+
         with self.eof_coord_lock:
             self.avg_eof.discard(client_id)
             self.sp_eof_done.discard(client_id)
@@ -232,6 +234,11 @@ class AvgJoiner:
         try:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
+
+            h = checkpoint.msg_hash(message)
+            if h == self._last_sp_hash:
+                ack()
+                return
 
             if len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF"):
                 counter = AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[2])
@@ -251,18 +258,13 @@ class AvgJoiner:
                     with self.eof_coord_lock:
                         self.sp_eof_done.add(client_id)
 
-                    self._try_send_eof(client_id)
+                    self._try_send_eof(client_id, h)
                 else:
                     self.second_period_consumer.send(
                         message_protocol.internal.serialize([client_id, "EOF", counter])
                     )
 
                 self._save_checkpoint()
-                ack()
-                return
-
-            h = checkpoint.msg_hash(message)
-            if h == self._last_sp_hash:
                 ack()
                 return
 
@@ -299,6 +301,11 @@ class AvgJoiner:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
+            h = checkpoint.msg_hash(message)
+            if h == self._last_avg_hash:
+                ack()
+                return
+
             if len(fields) == 3 and fields[1] == "AVG_EOF":
                 avg_id = fields[2]
                 logging.info(
@@ -319,13 +326,8 @@ class AvgJoiner:
                 del self.avg_eof_seen[client_id]
                 with self.eof_coord_lock:
                     self.avg_eof.add(client_id)
-                self._try_send_eof(client_id)
+                self._try_send_eof(client_id, h)
                 self._save_checkpoint()
-                ack()
-                return
-
-            h = checkpoint.msg_hash(message)
-            if h == self._last_avg_hash:
                 ack()
                 return
 
