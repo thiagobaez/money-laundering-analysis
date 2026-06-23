@@ -44,6 +44,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_0:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -54,6 +56,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_0
   filter_q5_fmt_1:
     build:
       context: ./src/
@@ -63,6 +66,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_1:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -73,6 +78,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_1
   filter_q5_fmt_2:
     build:
       context: ./src/
@@ -82,6 +88,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_2:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -92,6 +100,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_2
   filter_q5_fmt_3:
     build:
       context: ./src/
@@ -101,6 +110,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_3:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -111,6 +122,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_3
   filter_q5_fmt_4:
     build:
       context: ./src/
@@ -120,6 +132,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_4:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -130,6 +144,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_4
   filter_q5_fmt_5:
     build:
       context: ./src/
@@ -139,6 +154,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_5:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -149,6 +166,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_5
   filter_q5_fmt_6:
     build:
       context: ./src/
@@ -158,6 +176,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/filter_q5_fmt_6:/data
     environment:
     - QUERY_NUMBER=5
     - MOM_HOST=rabbitmq
@@ -168,6 +188,7 @@ services:
     - LE_DATE=2022-09-05
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_fmt_6
   converter_0:
     build:
       context: ./src/
@@ -190,6 +211,8 @@ services:
         condition: service_started
       filter_q5_fmt_6: &id008
         condition: service_started
+    volumes:
+    - ./data/converter_0:/data
     environment:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=converter_queue
@@ -197,6 +220,7 @@ services:
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=converter_0
   converter_1:
     build:
       context: ./src/
@@ -212,6 +236,8 @@ services:
       filter_q5_fmt_4: *id006
       filter_q5_fmt_5: *id007
       filter_q5_fmt_6: *id008
+    volumes:
+    - ./data/converter_1:/data
     environment:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=converter_queue
@@ -219,6 +245,7 @@ services:
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=converter_1
   converter_2:
     build:
       context: ./src/
@@ -234,6 +261,8 @@ services:
       filter_q5_fmt_4: *id006
       filter_q5_fmt_5: *id007
       filter_q5_fmt_6: *id008
+    volumes:
+    - ./data/converter_2:/data
     environment:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=converter_queue
@@ -241,6 +270,7 @@ services:
     - CONVERTER_AMOUNT=3
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=converter_2
   filter_q5_amount_0:
     build:
       context: ./src/
@@ -254,6 +284,8 @@ services:
         condition: service_started
       converter_2: &id011
         condition: service_started
+    volumes:
+    - ./data/filter_q5_amount_0:/data
     environment:
     - QUERY_NUMBER=5
     - ADD_QUERY_ID=True
@@ -263,6 +295,7 @@ services:
     - FILTER_AMOUNT=2
     - MAX_AMOUNT=1.0
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_amount_0
   filter_q5_amount_1:
     build:
       context: ./src/
@@ -273,6 +306,8 @@ services:
       converter_0: *id009
       converter_1: *id010
       converter_2: *id011
+    volumes:
+    - ./data/filter_q5_amount_1:/data
     environment:
     - QUERY_NUMBER=5
     - ADD_QUERY_ID=True
@@ -282,6 +317,7 @@ services:
     - FILTER_AMOUNT=2
     - MAX_AMOUNT=1.0
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=filter_q5_amount_1
   rabbitmq:
     build:
       context: ./src/
@@ -298,3 +334,27 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
+  watchdog:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    depends_on:
+      rabbitmq: *id001
+  chaos_monkey:
+    build:
+      context: ./src/
+      dockerfile: chaos_monkey/Dockerfile
+    container_name: chaos_monkey
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - KILL_INTERVAL=60
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,watchdog,gateway,client
+    depends_on:
+      rabbitmq: *id001
