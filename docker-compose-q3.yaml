@@ -9,7 +9,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Small_Trans.csv.gz
+    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
     - BATCH_SIZE=1000
     volumes:
@@ -331,6 +331,8 @@ services:
       context: ./src/
       dockerfile: rabbitmq/Dockerfile
     container_name: rabbitmq
+    volumes:
+    - ./data/rabbitmq:/var/lib/rabbitmq
     environment:
     - RABBITMQ_LOG_LEVELS=error
     healthcheck:
