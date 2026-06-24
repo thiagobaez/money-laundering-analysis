@@ -9,6 +9,8 @@ services:
         condition: service_healthy
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q4_sg_detect_0:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -30,6 +32,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q4_sg_detect_1:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -51,6 +55,8 @@ services:
       rabbitmq: *id001
       gateway:
         condition: service_started
+    volumes:
+    - ./data/q4_sg_detect_2:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -76,6 +82,8 @@ services:
         condition: service_started
       q4_sg_detect_2: &id004
         condition: service_started
+    volumes:
+    - ./data/q4_og_detect_0:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -95,6 +103,8 @@ services:
       q4_sg_detect_0: *id002
       q4_sg_detect_1: *id003
       q4_sg_detect_2: *id004
+    volumes:
+    - ./data/q4_og_detect_1:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -114,6 +124,8 @@ services:
       q4_sg_detect_0: *id002
       q4_sg_detect_1: *id003
       q4_sg_detect_2: *id004
+    volumes:
+    - ./data/q4_og_detect_2:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -133,6 +145,8 @@ services:
       q4_sg_detect_0: *id002
       q4_sg_detect_1: *id003
       q4_sg_detect_2: *id004
+    volumes:
+    - ./data/q4_dt_detect_0:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -152,6 +166,8 @@ services:
       q4_sg_detect_0: *id002
       q4_sg_detect_1: *id003
       q4_sg_detect_2: *id004
+    volumes:
+    - ./data/q4_dt_detect_1:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -171,6 +187,8 @@ services:
       q4_sg_detect_0: *id002
       q4_sg_detect_1: *id003
       q4_sg_detect_2: *id004
+    volumes:
+    - ./data/q4_dt_detect_2:/data
     environment:
     - QUERY_NUMBER=4
     - MOM_HOST=rabbitmq
@@ -199,6 +217,8 @@ services:
         condition: service_started
       q4_dt_detect_2: &id010
         condition: service_started
+    volumes:
+    - ./data/q4_split_0:/data
     environment:
     - QUERY_NUMBER=4
     - SPLIT_AMOUNT=3
@@ -222,6 +242,8 @@ services:
       q4_dt_detect_0: *id008
       q4_dt_detect_1: *id009
       q4_dt_detect_2: *id010
+    volumes:
+    - ./data/q4_split_1:/data
     environment:
     - QUERY_NUMBER=4
     - SPLIT_AMOUNT=3
@@ -245,6 +267,8 @@ services:
       q4_dt_detect_0: *id008
       q4_dt_detect_1: *id009
       q4_dt_detect_2: *id010
+    volumes:
+    - ./data/q4_split_2:/data
     environment:
     - QUERY_NUMBER=4
     - SPLIT_AMOUNT=3
@@ -268,6 +292,8 @@ services:
         condition: service_started
       q4_split_2: &id013
         condition: service_started
+    volumes:
+    - ./data/q4_filter_date_0:/data
     environment:
     - ADD_QUERY_ID=True
     - FILTER_AMOUNT=3
@@ -289,6 +315,8 @@ services:
       q4_split_0: *id011
       q4_split_1: *id012
       q4_split_2: *id013
+    volumes:
+    - ./data/q4_filter_date_1:/data
     environment:
     - ADD_QUERY_ID=True
     - FILTER_AMOUNT=3
@@ -310,6 +338,8 @@ services:
       q4_split_0: *id011
       q4_split_1: *id012
       q4_split_2: *id013
+    volumes:
+    - ./data/q4_filter_date_2:/data
     environment:
     - ADD_QUERY_ID=True
     - FILTER_AMOUNT=3
@@ -334,6 +364,8 @@ services:
         condition: service_started
       q4_filter_date_2: &id016
         condition: service_started
+    volumes:
+    - ./data/filter_usd_0:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -354,6 +386,8 @@ services:
       q4_filter_date_0: *id014
       q4_filter_date_1: *id015
       q4_filter_date_2: *id016
+    volumes:
+    - ./data/filter_usd_1:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
@@ -374,6 +408,8 @@ services:
       q4_filter_date_0: *id014
       q4_filter_date_1: *id015
       q4_filter_date_2: *id016
+    volumes:
+    - ./data/filter_usd_2:/data
     environment:
     - FILTER_AMOUNT=3
     - QUERY_NUMBER=1
