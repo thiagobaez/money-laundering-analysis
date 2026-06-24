@@ -23,10 +23,9 @@ class Watchdog:
     def __init__(self):
         self._lock = threading.Lock()
         self._stopped = threading.Event()
-        self._docker = docker.from_env(timeout=10)
+        self._docker = docker.from_env()
         self._last_seen: dict[str, float] = {}
         self._peer_last_seen: dict[int, float] = {}
-        self._restarting: set[str] = set()
 
         self._worker_queue = MessageMiddlewareExchangeRabbitMQ(
             MOM_HOST, WORKER_EXCHANGE, [f"watchdog_{WATCHDOG_ID}"]
@@ -86,30 +85,14 @@ class Watchdog:
                     )
             time.sleep(WATCHDOG_HEARTBEAT_INTERVAL)
 
-    def _try_restart(self, name: str) -> None:
+    def _try_restart(self, name: str) -> bool:
         try:
             self._docker.containers.get(name).start()
             logging.info(f"[WATCHDOG {WATCHDOG_ID}] Restarted: {name}")
-            with self._lock:
-                if name in self._last_seen:
-                    self._last_seen[name] = time.time()
-                for peer_id in range(WATCHDOG_COUNT):
-                    if f"watchdog_{peer_id}" == name:
-                        self._peer_last_seen[peer_id] = time.time()
-                        break
+            return True
         except Exception as e:
             logging.error(f"[WATCHDOG {WATCHDOG_ID}] Could not restart {name}: {e}")
-        finally:
-            with self._lock:
-                self._restarting.discard(name)
-
-    def _schedule_restart(self, name: str) -> None:
-        with self._lock:
-            if name in self._restarting:
-                return
-            self._restarting.add(name)
-        logging.info(f"[WATCHDOG {WATCHDOG_ID}] Scheduling restart: {name}")
-        threading.Thread(target=self._try_restart, args=(name,), daemon=True).start()
+            return False
 
     def _revive_loop(self):
         while not self._stopped.is_set():
@@ -120,14 +103,15 @@ class Watchdog:
                 monitored_id = (WATCHDOG_ID - 1 + WATCHDOG_COUNT) % WATCHDOG_COUNT
                 with self._lock:
                     peer_ts = self._peer_last_seen.get(monitored_id)
-                    peer_restarting = f"watchdog_{monitored_id}" in self._restarting
-                if not peer_restarting and peer_ts is not None and now - peer_ts > WATCHDOG_TIMEOUT:
+                if peer_ts is not None and now - peer_ts > WATCHDOG_TIMEOUT:
                     peer_name = f"watchdog_{monitored_id}"
                     logging.info(
                         f"[WATCHDOG {WATCHDOG_ID}] Peer {peer_name} timed out "
                         f"({now - peer_ts:.0f}s), restarting..."
                     )
-                    self._schedule_restart(peer_name)
+                    if self._try_restart(peer_name):
+                        with self._lock:
+                            self._peer_last_seen[monitored_id] = time.time()
 
             if not self._is_leader():
                 logging.debug(f"[WATCHDOG {WATCHDOG_ID}] Not leader, skipping worker check")
@@ -136,16 +120,17 @@ class Watchdog:
             logging.debug(f"[WATCHDOG {WATCHDOG_ID}] Leader — checking workers")
             with self._lock:
                 snapshot = dict(self._last_seen)
-                currently_restarting = set(self._restarting)
 
             for name, ts in snapshot.items():
-                if now - ts <= HEARTBEAT_TIMEOUT or name in currently_restarting:
+                if now - ts <= HEARTBEAT_TIMEOUT:
                     continue
                 logging.info(
                     f"[WATCHDOG {WATCHDOG_ID}] No heartbeat from {name} "
                     f"for {now - ts:.0f}s, restarting..."
                 )
-                self._schedule_restart(name)
+                if self._try_restart(name):
+                    with self._lock:
+                        self._last_seen[name] = time.time()
 
     def run(self):
         logging.info(

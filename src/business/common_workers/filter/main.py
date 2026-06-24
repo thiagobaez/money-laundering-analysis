@@ -51,6 +51,7 @@ class Filter:
         self._last_msg_hash: str | None = None
         self._heartbeat = heartbeat
         self._disk_counts: dict[str, int] = {}
+        self._disk_sent: set[str] = set()
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -83,16 +84,23 @@ class Filter:
         if state is not None:
             self._last_msg_hash = state.get("last_msg_hash")
             self.eof_seen = set(state.get("eof_seen", []))
+            self._disk_sent = set(state.get("disk_sent", []))
             logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
 
         if os.path.isdir(DATA_DIR):
             for entry in os.listdir(DATA_DIR):
                 client_dir = os.path.join(DATA_DIR, entry)
                 if os.path.isdir(client_dir):
-                    logging.info(
-                        f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
-                    )
-                    self._send_disk_rows(entry)
+                    path = self._file_path(entry)
+                    if entry in self._disk_sent:
+                        if os.path.exists(path):
+                            os.remove(path)
+                        self._disk_sent.discard(entry)
+                    elif os.path.exists(path):
+                        logging.info(
+                            f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
+                        )
+                        self._send_disk_rows(entry)
 
     def _save_checkpoint(self):
         checkpoint.save(
@@ -100,6 +108,7 @@ class Filter:
             {
                 "last_msg_hash": self._last_msg_hash,
                 "eof_seen": list(self.eof_seen),
+                "disk_sent": list(self._disk_sent),
             },
         )
 
@@ -127,7 +136,10 @@ class Filter:
         with open(path, "r", newline="") as f:
             rows = list(csv.reader(f))
         self._send_batch(client_id, rows)
+        self._disk_sent.add(client_id)
+        self._save_checkpoint()
         os.remove(path)
+        self._disk_sent.discard(client_id)
         self._disk_counts[client_id] = 0
 
     def _parse_transaction(self, fields):
@@ -171,15 +183,13 @@ class Filter:
 
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
-            logging.error(
-                f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}"
-            )
+
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                logging.error(
+                logging.info(
                     f"[QUERY {QUERY_NUMBER}] [FILTER] Sending EOF downstream for client {client_id} (first time, counter=1)"
                 )
                 self._send_output(message_protocol.internal.serialize([client_id]))
@@ -187,9 +197,6 @@ class Filter:
                 self._save_checkpoint()
                 self.eof_seen.discard(client_id)
         else:
-            logging.error(
-                f"[QUERY {QUERY_NUMBER}] [FILTER] client {client_id} already in eof_seen, re-enqueuing counter={counter}"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -229,7 +236,6 @@ class Filter:
             nack()
 
     def run(self):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Starting filter worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -247,7 +253,7 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()
