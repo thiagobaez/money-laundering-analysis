@@ -1,3 +1,4 @@
+import json
 import logging
 import socket
 import os
@@ -29,6 +30,62 @@ OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "0"))
 SG_DETECT_AMOUNT = int(os.environ.get("SG_DETECT_AMOUNT", "0"))
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
+
+_ACTIVE_CLIENTS_FILE = "active_clients.json"
+
+
+def _active_clients_path():
+    return os.path.join(DATA_DIR, _ACTIVE_CLIENTS_FILE)
+
+
+def _save_active_clients(client_ids):
+    path = _active_clients_path()
+    if not client_ids:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(list(client_ids), f)
+    os.replace(tmp_path, path)
+
+
+def _load_active_clients():
+    path = _active_clients_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            client_ids = json.load(f)
+        return set(client_ids)
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def _send_cancellation_eof(client_id):
+    outputs = []
+    try:
+        if INPUT_QUEUE_NAME:
+            outputs.append(MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE_NAME))
+        if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
+            outputs.append(
+                MessageMiddlewareExchangeRabbitMQ(
+                    MOM_HOST, INPUT_EXCHANGE_NAME, INPUT_ROUTING_KEYS
+                )
+            )
+        cancel_eof = internal.serialize([client_id])
+        for output in outputs:
+            output.send(cancel_eof)
+    except Exception as e:
+        logging.error(
+            "Failed to send cancellation EOF for client_id=%s: %s", client_id, e
+        )
+    finally:
+        for output in outputs:
+            try:
+                output.close()
+            except Exception as e:
+                logging.error(e)
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -59,6 +116,7 @@ def handle_client_request(client_socket, msg_handler):
                 return
     except socket.error:
         logging.error("The connection with the client was lost")
+        _send_cancellation_eof(msg_handler.client_id)
     except Exception as e:
         logging.error(e)
     finally:
@@ -66,11 +124,16 @@ def handle_client_request(client_socket, msg_handler):
             output.close()
 
 
-def handle_client_response(client_map, num_expected_eofs):
+def handle_client_response(client_map, active_clients, num_expected_eofs):
     output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
     eof_counts = {}
     q3_eof_seen = {}
     q4_eof_seen = {}
+
+    def _remove_active_client(client_id):
+        if client_id in active_clients:
+            del active_clients[client_id]
+            _save_active_clients(set(active_clients.keys()))
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -107,6 +170,7 @@ def handle_client_response(client_map, num_expected_eofs):
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
                     del client_map[client_id]
+                    _remove_active_client(client_id)
                     del eof_counts[client_id]
 
                 ack()
@@ -132,6 +196,7 @@ def handle_client_response(client_map, num_expected_eofs):
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
                     del client_map[client_id]
+                    _remove_active_client(client_id)
                     del eof_counts[client_id]
 
                 ack()
@@ -152,6 +217,7 @@ def handle_client_response(client_map, num_expected_eofs):
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
                     del client_map[client_id]
+                    _remove_active_client(client_id)
                     del eof_counts[client_id]
             else:
                 query_id, rows = result
@@ -164,6 +230,8 @@ def handle_client_response(client_map, num_expected_eofs):
             logging.error("The connection with the client was lost")
             if client_id is not None and client_id in client_map:
                 del client_map[client_id]
+                _remove_active_client(client_id)
+                _send_cancellation_eof(client_id)
             ack()
         except Exception as e:
             logging.error(e)
@@ -185,10 +253,22 @@ def main():
 
     with multiprocessing.Manager() as manager:
         client_map = manager.dict()
+        active_clients = manager.dict()
         sigterm_received = manager.Value("c_short", 0)
+
+        stale_client_ids = _load_active_clients()
+        for client_id in stale_client_ids:
+            _send_cancellation_eof(client_id)
+            logging.info(
+                "Cancelled orphaned pipeline state for client_id=%s", client_id
+            )
+        path = _active_clients_path()
+        if os.path.exists(path):
+            os.remove(path)
+
         with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
             processes_pool.apply_async(
-                handle_client_response, (client_map, NUM_EXPECTED_EOFS)
+                handle_client_response, (client_map, active_clients, NUM_EXPECTED_EOFS)
             )
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -207,6 +287,8 @@ def main():
                         logging.info("A new client has connected")
                         msg_handler = MessageHandler()
                         client_map[msg_handler.client_id] = [msg_handler, client_socket]
+                        active_clients[msg_handler.client_id] = True
+                        _save_active_clients(set(active_clients.keys()))
                         processes_pool.apply_async(
                             handle_client_request,
                             (client_socket, msg_handler),

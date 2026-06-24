@@ -3,6 +3,7 @@ import os
 import socket
 import csv
 import gzip
+import time
 
 from common.message_protocol import external
 
@@ -11,6 +12,8 @@ SERVER_PORT = int(os.environ["SERVER_PORT"])
 INPUT_FILE = os.environ["INPUT_FILE"]
 OUTPUT_FILE = os.environ["OUTPUT_FILE"]
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "100"))
+MAX_RETRIES = int(os.environ.get("MAX_RETRIES", "5"))
+RETRY_BASE_DELAY = float(os.environ.get("RETRY_BASE_DELAY", "2.0"))
 
 
 class Client:
@@ -112,24 +115,34 @@ class Client:
 
 def main() -> int:
     logging.basicConfig(level=logging.ERROR)
-    client = Client()
 
-    try:
-        client.connect()
-        client._send_file(INPUT_FILE)
-        client._receive_results(OUTPUT_FILE)
-    except ConnectionError:
-        if not client.closed:
-            logging.error("The connection with the server was lost")
-            return 1
-    except Exception as e:
-        logging.error(e)
-        return 2
-    finally:
-        if not client.closed:
-            client.disconnect()
+    for attempt in range(MAX_RETRIES):
+        client = Client()
+        try:
+            logging.error(
+                "Connecting to server (attempt %d/%d)", attempt + 1, MAX_RETRIES
+            )
+            client.connect()
+            client._send_file(INPUT_FILE)
+            client._receive_results(OUTPUT_FILE)
+            return 0
+        except ConnectionError:
+            if not client.closed:
+                logging.error("The connection with the server was lost")
+        except Exception as e:
+            logging.error(e)
+            return 2
+        finally:
+            if not client.closed:
+                client.disconnect()
 
-    return 0
+        if attempt < MAX_RETRIES - 1:
+            wait = RETRY_BASE_DELAY * (2**attempt)
+            logging.error("Retrying in %.1f seconds", wait)
+            time.sleep(wait)
+
+    logging.error("Failed to connect after %d attempts", MAX_RETRIES)
+    return 1
 
 
 if __name__ == "__main__":
