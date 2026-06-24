@@ -164,7 +164,9 @@ class Split:
                     )
                 ]
 
-                origin_batch = self._origin_batches.setdefault((client_id, origin_key), [])
+                origin_batch = self._origin_batches.setdefault(
+                    (client_id, origin_key), []
+                )
                 origin_batch.append(row)
                 if len(origin_batch) >= BATCH_SIZE:
                     self._flush_origin_batch(client_id, origin_key)
