@@ -1234,10 +1234,12 @@ services:
     - INPUT_ROUTING_KEYS=filter_usd,q5_filter_fmt
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - NUM_EXPECTED_EOFS=10
+    - NUM_EXPECTED_EOFS=4
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
+    - AVG_JOINER_AMOUNT=5
+    - SG_DETECT_AMOUNT=3
   rabbitmq:
     build:
       context: ./src/
@@ -1263,7 +1265,7 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - KILL_INTERVAL=30
-    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0,watchdog
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0,watchdog,gateway
     depends_on:
       rabbitmq: *id001
   watchdog:
@@ -1275,6 +1277,6 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
-    - HEARTBEAT_TIMEOUT=30
+    - HEARTBEAT_TIMEOUT=10
     depends_on:
       rabbitmq: *id001

@@ -17,6 +17,7 @@ OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 MIN_COMMON = int(os.environ["MIN_COMMON"])
 NUM_OG_WORKERS = int(os.environ.get("NUM_OG_WORKERS", "1"))
 NUM_DT_WORKERS = int(os.environ.get("NUM_DT_WORKERS", "1"))
+CONTAINER_NAME = os.environ.get("CONTAINER_NAME", "sg_detect_unknown")
 
 
 class SgDetect:
@@ -164,7 +165,9 @@ class SgDetect:
         dt_done = self.destinations_eofs.get(client_id, 0) >= NUM_DT_WORKERS
         if not (og_done and dt_done):
             return
-        logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Both sides complete for client {client_id}, emitting results")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Both sides complete for client {client_id}, emitting results"
+        )
 
         self._emit_results(client_id)
 
@@ -175,7 +178,11 @@ class SgDetect:
         del self.origins_eofs[client_id]
         del self.destinations_eofs[client_id]
 
-        self.output_queue.send(message_protocol.internal.serialize([client_id]))
+        self.output_queue.send(
+            message_protocol.internal.serialize(
+                [client_id, QUERY_NUMBER, "EOF", CONTAINER_NAME]
+            )
+        )
 
     def _emit_results(self, client_id):
         origins_dir = self._origins_dir(client_id)

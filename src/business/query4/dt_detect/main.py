@@ -49,7 +49,9 @@ class DtDetect:
         return self._logs[client_id]
 
     def _on_eof_message(self, client_id):
-        logging.info(f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}"
+        )
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
