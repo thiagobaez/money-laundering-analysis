@@ -27,11 +27,12 @@ def generate_compose_all(
     chaos_kill_interval: int = 30,
     watchdog: bool = False,
     watchdog_timeout: int = 30,
+    watchdog_count: int = 3,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    num_expected_eofs = 1 + q3_n_avg_joiner + q4_n_detect + 1
+    num_expected_eofs = 4  # Q1=1, Q3=1 (grouped by AVG_JOINER_AMOUNT), Q4=1 (grouped by SG_DETECT_AMOUNT), Q5=1
 
     q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
     q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
@@ -434,6 +435,8 @@ def generate_compose_all(
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
             f"NUM_EXPECTED_EOFS={num_expected_eofs}",
+            f"AVG_JOINER_AMOUNT={q3_n_avg_joiner}",
+            f"SG_DETECT_AMOUNT={q4_n_detect}",
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
@@ -454,6 +457,12 @@ def generate_compose_all(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if watchdog:
+        for svc in services.values():
+            env = svc.get("environment", [])
+            if any(e.startswith("CONTAINER_NAME=") for e in env):
+                env.append(f"WATCHDOG_COUNT={watchdog_count}")
+
     if chaos_monkey:
         client_names = ",".join(f"client{i}" for i in range(len(input_files)))
         services["chaos_monkey"] = {
@@ -468,16 +477,24 @@ def generate_compose_all(
         }
 
     if watchdog:
-        services["watchdog"] = {
-            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
-            "container_name": "watchdog",
-            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
-            "environment": [
-                "MOM_HOST=rabbitmq",
-                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
-            ],
-            "depends_on": dict(rabbitmq_healthy),
-        }
+        for i in range(watchdog_count):
+            services[f"watchdog_{i}"] = {
+                "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+                "container_name": f"watchdog_{i}",
+                "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+                "environment": [
+                    "MOM_HOST=rabbitmq",
+                    f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+                    f"WATCHDOG_ID={i}",
+                    f"WATCHDOG_COUNT={watchdog_count}",
+                    "WATCHDOG_HEARTBEAT_INTERVAL=3",
+                    f"WATCHDOG_TIMEOUT={watchdog_timeout}",
+                    "REVIVE_INTERVAL=5",
+                    "WORKER_EXCHANGE=heartbeat_exchange",
+                    "PEER_EXCHANGE=watchdog_exchange",
+                ],
+                "depends_on": dict(rabbitmq_healthy),
+            }
 
     return {"services": services}
 
@@ -513,6 +530,7 @@ def main():
     parser.add_argument("--chaos-kill-interval", type=int, default=30)
     parser.add_argument("--watchdog", action="store_true", default=False)
     parser.add_argument("--watchdog-timeout", type=int, default=30)
+    parser.add_argument("--watchdog-count", type=int, default=3)
     args = parser.parse_args()
 
     compose = generate_compose_all(
@@ -537,6 +555,7 @@ def main():
         chaos_kill_interval=args.chaos_kill_interval,
         watchdog=args.watchdog,
         watchdog_timeout=args.watchdog_timeout,
+        watchdog_count=args.watchdog_count,
     )
 
     with open(args.output, "w") as f:
@@ -548,7 +567,6 @@ def main():
             Dumper=yaml.SafeDumper,
         )
 
-    num_eofs = 1 + args.q3_avg_joiner + args.q4_detect + 1
     print(f"Generated {args.output} with:")
     print(f"  input_files:         {args.input_files}")
     print(
@@ -564,7 +582,7 @@ def main():
     print(
         f"  Q5: filter_fmt={args.q5_filter_fmt}  converter={args.q5_converter}  filter_amount={args.q5_filter_amount}  batch={args.q5_batch_size}"
     )
-    print(f"  NUM_EXPECTED_EOFS:   {num_eofs}")
+    print(f"  NUM_EXPECTED_EOFS:   4 (Q1+Q3+Q4+Q5, each grouped)")
 
 
 if __name__ == "__main__":

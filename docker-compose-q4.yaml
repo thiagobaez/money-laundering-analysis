@@ -435,7 +435,8 @@ services:
     - INPUT_ROUTING_KEYS=filter_usd
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
-    - NUM_EXPECTED_EOFS=3
+    - NUM_EXPECTED_EOFS=1
+    - SG_DETECT_AMOUNT=3
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
@@ -464,7 +465,7 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - KILL_INTERVAL=30
-    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0,gateway
     depends_on:
       rabbitmq: *id001
   watchdog_0:

@@ -22,8 +22,9 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=q4_sg_detect_0
+    - WATCHDOG_COUNT=3
   q4_sg_detect_1:
     build:
       context: ./src/
@@ -46,8 +47,9 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=q4_sg_detect_1
+    - WATCHDOG_COUNT=3
   q4_sg_detect_2:
     build:
       context: ./src/
@@ -70,8 +72,9 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - CONTAINER_NAME=q4_sg_detect_2
+    - WATCHDOG_COUNT=3
   q4_og_detect_0:
     build:
       context: ./src/
@@ -96,6 +99,7 @@ services:
     - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
     - CONTAINER_NAME=q4_og_detect_0
+    - WATCHDOG_COUNT=3
   q4_og_detect_1:
     build:
       context: ./src/
@@ -117,6 +121,7 @@ services:
     - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
     - CONTAINER_NAME=q4_og_detect_1
+    - WATCHDOG_COUNT=3
   q4_og_detect_2:
     build:
       context: ./src/
@@ -138,6 +143,7 @@ services:
     - OUTPUT_ROUTING_KEYS=og_detect_1,og_detect_2,og_detect_3
     - MIN_DESTINATIONS=5
     - CONTAINER_NAME=q4_og_detect_2
+    - WATCHDOG_COUNT=3
   q4_dt_detect_0:
     build:
       context: ./src/
@@ -159,6 +165,7 @@ services:
     - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
     - CONTAINER_NAME=q4_dt_detect_0
+    - WATCHDOG_COUNT=3
   q4_dt_detect_1:
     build:
       context: ./src/
@@ -180,6 +187,7 @@ services:
     - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
     - CONTAINER_NAME=q4_dt_detect_1
+    - WATCHDOG_COUNT=3
   q4_dt_detect_2:
     build:
       context: ./src/
@@ -201,6 +209,7 @@ services:
     - OUTPUT_ROUTING_KEYS=sg_detect_1,sg_detect_2,sg_detect_3
     - MIN_ORIGINS=5
     - CONTAINER_NAME=q4_dt_detect_2
+    - WATCHDOG_COUNT=3
   q4_split_0:
     build:
       context: ./src/
@@ -230,9 +239,10 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_0
+    - WATCHDOG_COUNT=3
   q4_split_1:
     build:
       context: ./src/
@@ -256,9 +266,10 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_1
+    - WATCHDOG_COUNT=3
   q4_split_2:
     build:
       context: ./src/
@@ -282,9 +293,10 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_2
+    - WATCHDOG_COUNT=3
   q4_filter_date_0:
     build:
       context: ./src/
@@ -309,9 +321,10 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_0
+    - WATCHDOG_COUNT=3
   q4_filter_date_1:
     build:
       context: ./src/
@@ -333,9 +346,10 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_1
+    - WATCHDOG_COUNT=3
   q4_filter_date_2:
     build:
       context: ./src/
@@ -357,9 +371,10 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=20000
+    - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_2
+    - WATCHDOG_COUNT=3
   q1_filter_amount_0:
     build:
       context: ./src/
@@ -382,6 +397,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q1_filter_amount_0
+    - WATCHDOG_COUNT=3
   q1_filter_amount_1:
     build:
       context: ./src/
@@ -404,6 +420,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q1_filter_amount_1
+    - WATCHDOG_COUNT=3
   q1_filter_amount_2:
     build:
       context: ./src/
@@ -426,6 +443,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=q1_filter_amount_2
+    - WATCHDOG_COUNT=3
   avg_joiner_0:
     build:
       context: ./src/
@@ -446,6 +464,7 @@ services:
     - DATA_DIR=/data
     - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_0
+    - WATCHDOG_COUNT=3
   avg_joiner_1:
     build:
       context: ./src/
@@ -466,6 +485,7 @@ services:
     - DATA_DIR=/data
     - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_1
+    - WATCHDOG_COUNT=3
   avg_joiner_2:
     build:
       context: ./src/
@@ -486,6 +506,7 @@ services:
     - DATA_DIR=/data
     - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_2
+    - WATCHDOG_COUNT=3
   avg_joiner_3:
     build:
       context: ./src/
@@ -506,6 +527,7 @@ services:
     - DATA_DIR=/data
     - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_3
+    - WATCHDOG_COUNT=3
   avg_joiner_4:
     build:
       context: ./src/
@@ -526,6 +548,7 @@ services:
     - DATA_DIR=/data
     - BATCH_SIZE=10000
     - CONTAINER_NAME=avg_joiner_4
+    - WATCHDOG_COUNT=3
   avg_0:
     build:
       context: ./src/
@@ -553,6 +576,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data
     - CONTAINER_NAME=avg_0
+    - WATCHDOG_COUNT=3
   avg_1:
     build:
       context: ./src/
@@ -575,6 +599,7 @@ services:
     - AVG_AMOUNT=2
     - DATA_DIR=/data
     - CONTAINER_NAME=avg_1
+    - WATCHDOG_COUNT=3
   split_date_0:
     build:
       context: ./src/
@@ -602,6 +627,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_0
+    - WATCHDOG_COUNT=3
   split_date_1:
     build:
       context: ./src/
@@ -627,6 +653,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_1
+    - WATCHDOG_COUNT=3
   split_date_2:
     build:
       context: ./src/
@@ -652,6 +679,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=split_date_2
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_0:
     build:
       context: ./src/
@@ -676,6 +704,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_0
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_1:
     build:
       context: ./src/
@@ -700,6 +729,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_1
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_2:
     build:
       context: ./src/
@@ -724,6 +754,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_2
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_3:
     build:
       context: ./src/
@@ -748,6 +779,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_3
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_4:
     build:
       context: ./src/
@@ -772,6 +804,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_4
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_5:
     build:
       context: ./src/
@@ -796,6 +829,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_5
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_6:
     build:
       context: ./src/
@@ -820,6 +854,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_fmt_6
+    - WATCHDOG_COUNT=3
   converter_0:
     build:
       context: ./src/
@@ -853,6 +888,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=converter_0
+    - WATCHDOG_COUNT=3
   converter_1:
     build:
       context: ./src/
@@ -879,6 +915,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=converter_1
+    - WATCHDOG_COUNT=3
   converter_2:
     build:
       context: ./src/
@@ -905,6 +942,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=converter_2
+    - WATCHDOG_COUNT=3
   filter_q5_amount_0:
     build:
       context: ./src/
@@ -931,6 +969,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_amount_0
+    - WATCHDOG_COUNT=3
   filter_q5_amount_1:
     build:
       context: ./src/
@@ -954,6 +993,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_q5_amount_1
+    - WATCHDOG_COUNT=3
   filter_usd_0:
     build:
       context: ./src/
@@ -994,6 +1034,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_0
+    - WATCHDOG_COUNT=3
   filter_usd_1:
     build:
       context: ./src/
@@ -1025,6 +1066,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_1
+    - WATCHDOG_COUNT=3
   filter_usd_2:
     build:
       context: ./src/
@@ -1056,6 +1098,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_2
+    - WATCHDOG_COUNT=3
   filter_usd_3:
     build:
       context: ./src/
@@ -1087,6 +1130,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_3
+    - WATCHDOG_COUNT=3
   filter_usd_4:
     build:
       context: ./src/
@@ -1118,6 +1162,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_4
+    - WATCHDOG_COUNT=3
   filter_usd_5:
     build:
       context: ./src/
@@ -1149,6 +1194,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_5
+    - WATCHDOG_COUNT=3
   filter_usd_6:
     build:
       context: ./src/
@@ -1180,6 +1226,7 @@ services:
     - BATCH_SIZE=10000
     - DATA_DIR=/data
     - CONTAINER_NAME=filter_usd_6
+    - WATCHDOG_COUNT=3
   client0:
     container_name: client0
     build:
@@ -1235,11 +1282,11 @@ services:
     - MOM_HOST=rabbitmq
     - OUTPUT_QUEUE=results_queue
     - NUM_EXPECTED_EOFS=4
+    - AVG_JOINER_AMOUNT=5
+    - SG_DETECT_AMOUNT=3
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - AVG_JOINER_AMOUNT=5
-    - SG_DETECT_AMOUNT=3
   rabbitmq:
     build:
       context: ./src/
@@ -1265,18 +1312,63 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - KILL_INTERVAL=30
-    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0,watchdog,gateway
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,client0
     depends_on:
       rabbitmq: *id001
-  watchdog:
+  watchdog_0:
     build:
       context: ./src/
       dockerfile: watchdog/Dockerfile
-    container_name: watchdog
+    container_name: watchdog_0
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
     - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=0
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
+    depends_on:
+      rabbitmq: *id001
+  watchdog_1:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog_1
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=1
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
+    depends_on:
+      rabbitmq: *id001
+  watchdog_2:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog_2
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=2
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
     depends_on:
       rabbitmq: *id001
