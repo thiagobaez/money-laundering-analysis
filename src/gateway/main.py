@@ -28,6 +28,7 @@ INPUT_EXCHANGE_NAME = os.environ.get("INPUT_EXCHANGE_NAME")
 OUTPUT_QUEUE = os.environ["OUTPUT_QUEUE"]
 NUM_EXPECTED_EOFS = int(os.environ["NUM_EXPECTED_EOFS"])
 AVG_JOINER_AMOUNT = int(os.environ.get("AVG_JOINER_AMOUNT", "0"))
+SG_DETECT_AMOUNT = int(os.environ.get("SG_DETECT_AMOUNT", "0"))
 
 
 def handle_client_request(client_socket, msg_handler):
@@ -69,6 +70,7 @@ def handle_client_response(client_map, num_expected_eofs):
     output_queue = MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
     eof_counts = {}
     q3_eof_seen = {}
+    q4_eof_seen = {}
 
     def _consume_result(message, ack, nack):
         client_id = None
@@ -99,6 +101,31 @@ def handle_client_response(client_map, num_expected_eofs):
                     return
 
                 del q3_eof_seen[client_id]
+
+                eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
+
+                if eof_counts[client_id] >= num_expected_eofs:
+                    external.send_msg(client_socket, external.MsgType.EOF)
+                    del client_map[client_id]
+                    del eof_counts[client_id]
+
+                ack()
+                return
+
+            if (
+                SG_DETECT_AMOUNT > 0
+                and len(deserialized) == 4
+                and deserialized[1] == 4
+                and deserialized[2] == "EOF"
+            ):
+                worker_id = deserialized[3]
+                q4_eof_seen.setdefault(client_id, set()).add(worker_id)
+
+                if len(q4_eof_seen[client_id]) < SG_DETECT_AMOUNT:
+                    ack()
+                    return
+
+                del q4_eof_seen[client_id]
 
                 eof_counts[client_id] = eof_counts.get(client_id, 0) + 1
 
