@@ -440,6 +440,8 @@ services:
     - PYTHONUNBUFFERED=1
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
+    - CONTAINER_NAME=gateway
+    - WATCHDOG_COUNT=3
   rabbitmq:
     build:
       context: ./src/

@@ -440,6 +440,7 @@ def generate_compose_all(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            "CONTAINER_NAME=gateway",
         ],
     }
 

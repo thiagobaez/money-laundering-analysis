@@ -100,6 +100,7 @@ def generate_compose_q1(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            "CONTAINER_NAME=gateway",
         ],
     }
 

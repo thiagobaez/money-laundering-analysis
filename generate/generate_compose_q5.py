@@ -61,6 +61,7 @@ def generate_compose(
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
             f"BATCH_SIZE={batch_size}",
+            "CONTAINER_NAME=gateway",
         ],
     }
 

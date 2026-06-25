@@ -250,59 +250,71 @@ def handle_sigterm(server_socket, client_map, sigterm_received):
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    from common.heartbeat import start_if_configured
 
-    with multiprocessing.Manager() as manager:
-        client_map = manager.dict()
-        active_clients = manager.dict()
-        sigterm_received = manager.Value("c_short", 0)
+    heartbeat = start_if_configured()
+    try:
+        with multiprocessing.Manager() as manager:
+            client_map = manager.dict()
+            active_clients = manager.dict()
+            sigterm_received = manager.Value("c_short", 0)
 
-        stale_client_ids = _load_active_clients()
-        for client_id in stale_client_ids:
-            _send_cancellation_eof(client_id)
-            logging.info(
-                "Cancelled orphaned pipeline state for client_id=%s", client_id
-            )
-        path = _active_clients_path()
-        if os.path.exists(path):
-            os.remove(path)
-
-        with multiprocessing.Pool(processes=os.process_cpu_count()) as processes_pool:
-            processes_pool.apply_async(
-                handle_client_response, (client_map, active_clients, NUM_EXPECTED_EOFS)
-            )
-
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-                logging.info("Listening to connections")
-                server_socket.bind((SERVER_HOST, SERVER_PORT))
-                server_socket.listen()
-                signal.signal(
-                    signal.SIGTERM,
-                    lambda _signum, _frame: handle_sigterm(
-                        server_socket, client_map, sigterm_received
-                    ),
+            stale_client_ids = _load_active_clients()
+            for client_id in stale_client_ids:
+                _send_cancellation_eof(client_id)
+                logging.info(
+                    "Cancelled orphaned pipeline state for client_id=%s", client_id
                 )
-                while True:
-                    try:
-                        client_socket, _ = server_socket.accept()
-                        logging.info("A new client has connected")
-                        msg_handler = MessageHandler()
-                        client_map[msg_handler.client_id] = [msg_handler, client_socket]
-                        active_clients[msg_handler.client_id] = True
-                        _save_active_clients(set(active_clients.keys()))
-                        processes_pool.apply_async(
-                            handle_client_request,
-                            (client_socket, msg_handler),
-                        )
-                    except socket.error:
-                        if sigterm_received.value == 0:
-                            logging.error("The connection with the client was lost")
-                            return 1
-                        else:
-                            return 0
-                    except Exception as e:
-                        logging.error(e)
-                        return 2
-    return 0
+            path = _active_clients_path()
+            if os.path.exists(path):
+                os.remove(path)
+
+            with multiprocessing.Pool(
+                processes=os.process_cpu_count()
+            ) as processes_pool:
+                processes_pool.apply_async(
+                    handle_client_response,
+                    (client_map, active_clients, NUM_EXPECTED_EOFS),
+                )
+
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+                    logging.info("Listening to connections")
+                    server_socket.bind((SERVER_HOST, SERVER_PORT))
+                    server_socket.listen()
+                    signal.signal(
+                        signal.SIGTERM,
+                        lambda _signum, _frame: handle_sigterm(
+                            server_socket, client_map, sigterm_received
+                        ),
+                    )
+                    while True:
+                        try:
+                            client_socket, _ = server_socket.accept()
+                            logging.info("A new client has connected")
+                            msg_handler = MessageHandler()
+                            client_map[msg_handler.client_id] = [
+                                msg_handler,
+                                client_socket,
+                            ]
+                            active_clients[msg_handler.client_id] = True
+                            _save_active_clients(set(active_clients.keys()))
+                            processes_pool.apply_async(
+                                handle_client_request,
+                                (client_socket, msg_handler),
+                            )
+                        except socket.error:
+                            if sigterm_received.value == 0:
+                                logging.error("The connection with the client was lost")
+                                return 1
+                            else:
+                                return 0
+                        except Exception as e:
+                            logging.error(e)
+                            return 2
+        return 0
+    finally:
+        if heartbeat:
+            heartbeat.stop()
 
 
 if __name__ == "__main__":
