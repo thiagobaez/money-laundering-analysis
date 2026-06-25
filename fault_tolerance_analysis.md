@@ -10,6 +10,7 @@
    - [Escenario 4: Caída en EOF antes de `_save_checkpoint`](#escenario-4-caída-durante-procesamiento-de-eof-antes-de-_save_checkpoint)
    - [Escenario 5: Caída en EOF después de `_save_checkpoint`](#escenario-5-caída-después-de-_save_checkpoint-en-eof-antes-de-ack)
    - [Escenario 6: Caída en `_send_disk_rows` antes de `os.remove`](#escenario-6-caída-dentro-de-_send_disk_rows-antes-de-osremove)
+   - [Escenario 7: Caída durante la escritura atómica en `_flush_batch_to_disk`](#escenario-7-caída-durante-la-escritura-atómica-en-_flush_batch_to_disk)
 
 2. [Worker Avg](#2-worker-avg)
    - [Contexto](#contexto-1)
@@ -28,6 +29,8 @@
    - [Escenario 6: Caída en batch de promedios después de `_save_checkpoint`](#escenario-6-caída-después-de-_save_checkpoint-en-batch-de-promedios-antes-de-ack)
    - [Escenario 7: Caída en AVG_EOF antes de `_save_checkpoint`](#escenario-7-caída-durante-procesamiento-de-avg_eof-antes-de-_save_checkpoint)
    - [Escenario 8: Caída en AVG_EOF después de `_save_checkpoint`](#escenario-8-caída-después-de-_save_checkpoint-en-avg_eof-antes-de-ack)
+   - [Escenario 9: Caída en `_flush_to_output` entre la reescritura del spill y el envío a output](#escenario-9-caída-en-_flush_to_output-después-de-reescribir-o-borrar-el-spill-pero-antes-de-enviar-el-output)
+   - [Escenario 10: Caída en `_flush_all_spill_to_output` entre el borrado del spill y el envío a output](#escenario-10-caída-en-_flush_all_spill_to_output-después-de-borrar-el-spill-pero-antes-de-enviar-el-output-al-eof)
 
 4. [Worker SplitDate](#4-worker-splitdate)
    - [Contexto](#contexto-3)
@@ -82,8 +85,13 @@ El `Filter` es un worker single-threaded que:
 
 Estado persistido:
 
+<<<<<<< HEAD
 - Disco (`DATA_DIR/<client_id>/rows.csv`): filas filtradas acumuladas, pendientes de envío downstream.
 - Checkpoint (`DATA_DIR/checkpoint.json`): `last_msg_hash` + `eof_seen`.
+=======
+- **Disco** (`DATA_DIR/<client_id>/rows.csv`): filas filtradas acumuladas, pendientes de envío downstream. La escritura es atómica: `_flush_batch_to_disk` lee el contenido existente, escribe todo (existente + nuevo) a `rows.csv.tmp` y reemplaza el archivo con `os.replace`. Esto evita que una caída a mitad de escritura deje el CSV con una fila truncada o corrupta (riesgo que existía con el modo `"a"` usado anteriormente).
+- **Checkpoint** (`DATA_DIR/checkpoint.json`): `last_msg_hash` + `eof_seen`.
+>>>>>>> 1b7e442551cdc438ea4cb9ecd7817d7afc7c3ad7
 
 ---
 
@@ -236,6 +244,43 @@ def _send_disk_rows(self, client_id):
 
 ---
 
+### Escenario 7: Caída durante la escritura atómica en `_flush_batch_to_disk`
+
+**Cuándo ocurre:** el worker muere mientras `_flush_batch_to_disk` escribe el archivo temporal `rows.csv.tmp` (lee las filas existentes + agrega las nuevas), en cualquier punto antes de que `os.replace` lo renombre a `rows.csv`.
+
+**Estado al morir:**
+- `rows.csv.tmp` puede quedar a medio escribir (incompleto o corrupto).
+- `rows.csv` permanece intacto con el contenido previo al mensaje en curso — `os.replace` nunca llegó a ejecutarse, así que el archivo real nunca está en un estado parcial.
+- El checkpoint no se actualizó (`_save_checkpoint` se llama después de `_flush_batch_to_disk`).
+
+**Al reiniciar:**
+- `_load_checkpoint` solo mira `rows.csv`; el `.tmp` huérfano se ignora y queda en el directorio del cliente hasta que el próximo flush lo sobreescriba.
+- RabbitMQ redelivera el mensaje (no fue ackeado).
+- El hash no coincide con `last_msg_hash` → se reprocesa → `_flush_batch_to_disk` vuelve a leer `rows.csv` íntegro y reescribe el `.tmp` correctamente.
+
+**Resultado:** correcto. El patrón `.tmp` + `os.replace` garantiza que `rows.csv` siempre está en uno de dos estados consistentes — el contenido anterior completo, o el nuevo contenido completo — nunca a medio escribir. Esto reemplaza el modo `"a"` (append) que se usaba antes, donde una caída en medio de un `write()` podía dejar una fila truncada y corromper las lecturas posteriores del CSV. El archivo `.tmp` huérfano no afecta la correctitud.
+
+```python
+def _flush_batch_to_disk(self, client_id):
+    rows = self.batches.pop(client_id, [])
+    if not rows:
+        return
+    path = self._file_path(client_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    existing_rows = []
+    if os.path.exists(path):
+        with open(path, "r", newline="") as f:
+            existing_rows = list(csv.reader(f))
+    with open(tmp_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(existing_rows)
+        writer.writerows(rows)
+    os.replace(tmp_path, path)
+```
+
+---
+
 ## 2. Worker Avg
 
 ### Contexto
@@ -344,8 +389,13 @@ Estado persistido en checkpoint:
 - `avg_eof_seen`: `{client_id: set(avg_ids)}` de instancias de avg que ya mandaron su EOF para cada cliente.
 - `avg_results`: promedios recibidos por `(client_id, payment_format)`.
 
+<<<<<<< HEAD
 Estado persistido en disco (fuera del checkpoint):
 - `DATA_DIR/<client_id>/<payment_format>.csv`: transacciones del segundo período spilleadas a disco, esperando que llegue el promedio de ese formato de pago.
+=======
+**Estado persistido en disco (fuera del checkpoint):**
+- `DATA_DIR/<client_id>/spill.csv`: un único archivo por cliente (en vez de uno por `payment_format` como antes) con las transacciones del segundo período spilleadas a disco de todos los formatos de pago, usando el `payment_format` como primera columna de cada fila. Las escrituras (`_flush_spill_to_disk`, el rewrite parcial de `_flush_to_output`, el borrado de `_flush_all_spill_to_output`) son atómicas vía `.tmp` + `os.replace`, por lo que una caída a mitad de escritura nunca deja `spill.csv` corrupto o truncado.
+>>>>>>> 1b7e442551cdc438ea4cb9ecd7817d7afc7c3ad7
 
 ---
 
@@ -366,7 +416,11 @@ Al reiniciar:
 
 Resultado: potencial duplicado de filas si el spill ya llegó a disco antes del crash.
 
+<<<<<<< HEAD
 La ventana sin cobertura es la caída entre `_flush_all_spill_batches` y `_save_checkpoint`.
+=======
+> **Ventana de falla:** caída entre `_flush_spill_to_disk` y `_save_checkpoint` — puede causar envíos duplicados.
+>>>>>>> 1b7e442551cdc438ea4cb9ecd7817d7afc7c3ad7
 
 ---
 
@@ -428,19 +482,30 @@ Cuándo ocurre: el worker muere mientras procesa promedios de avg (actualizando 
 
 Estado al morir:
 - `avg_results` en memoria tiene los promedios nuevos.
-- Algunos archivos de spill pueden haber sido leídos y borrados por `_flush_to_output`.
+- `spill.csv` puede haber sido reescrito (sin las filas de este `payment_format`) o borrado por `_flush_to_output`.
 - Checkpoint tiene `avg_results` del estado anterior y `last_avg_hash` del mensaje anterior.
 
+<<<<<<< HEAD
 Al reiniciar:
 - `avg_results` se restaura al estado anterior (sin los promedios nuevos).
+=======
+**Al reiniciar:**
+- `avg_results` se restaura al estado anterior (sin el promedio nuevo).
+>>>>>>> 1b7e442551cdc438ea4cb9ecd7817d7afc7c3ad7
 - RabbitMQ redelivera el batch de promedios.
 - Hash no coincide → reprocesa → `avg_results` se actualiza → `_flush_to_output` se llama de nuevo.
-- Si el archivo de spill todavía existe → se procesan las filas de nuevo → duplicado posible en output.
-- Si el archivo ya fue borrado en el intento anterior → `_flush_to_output` no encuentra el archivo → retorna sin hacer nada → correcto.
+- Si `spill.csv` todavía tiene filas de ese `payment_format` (el crash fue antes de la reescritura atómica) → se procesan de nuevo → comportamiento idéntico a un primer intento, sin duplicado ni pérdida.
+- Si `spill.csv` ya fue reescrito/borrado en el intento anterior (el crash fue **después** de la reescritura) → esas filas ya no están en el archivo → `_flush_to_output` no las vuelve a encontrar → nunca se reintenta enviarlas a output.
 
+<<<<<<< HEAD
 Resultado: potencial duplicado de filas si el archivo de spill no fue borrado antes del crash.
 
 La ventana sin cobertura es la caída entre `_flush_to_output` y `_save_checkpoint`, cuando el archivo de spill fue procesado pero el checkpoint no llegó a guardarse.
+=======
+**Resultado:** con el código actual, `_flush_to_output` reescribe/borra `spill.csv` (de forma atómica) **antes** de mandar `output_batch` a output (ver Escenario 9). Esto invierte el riesgo respecto al diseño anterior (un archivo por `payment_format`, que se borraba *después* de enviar el output): antes el peor caso era un duplicado; ahora el peor caso es una **pérdida silenciosa de filas** si el crash ocurre entre la reescritura del archivo y el envío a output. Si el crash ocurre antes de la reescritura, el reproceso es seguro.
+
+> **Ventana de falla:** caída entre la reescritura/borrado atómico de `spill.csv` y `_save_checkpoint` — puede causar pérdida de filas (no duplicado) si el crash cae específicamente entre la reescritura del spill y el envío a output dentro de `_flush_to_output` (ver Escenario 9 para el detalle de esa sub-ventana).
+>>>>>>> 1b7e442551cdc438ea4cb9ecd7817d7afc7c3ad7
 
 ---
 
@@ -486,6 +551,66 @@ Al reiniciar:
 - `avg_id` está en `avg_eof_seen` → descartado.
 
 Resultado: correcto. `avg_eof_seen` protege exactamente este caso.
+
+---
+
+### Escenario 9: Caída en `_flush_to_output`, después de reescribir o borrar el spill pero antes de enviar el output
+
+**Cuándo ocurre:** dentro de `_flush_to_output`, el worker ya filtró las filas de `spill.csv` que corresponden al `payment_format` recibido, ya reescribió (o borró, si no quedan filas de otros formatos) `spill.csv` de forma atómica, pero todavía no llamó a `_append_output_rows` para mandar `output_batch` a la cola de salida.
+
+```python
+with spill_lock:
+    ...
+    if remaining_rows:
+        ...
+        os.replace(tmp_path, path)
+    else:
+        os.remove(path)
+        ...
+# <-- ventana de falla: spill.csv ya actualizado, output_batch todavía no enviado
+self._append_output_rows(client_id, output_batch)
+```
+
+**Estado al morir:**
+- `spill.csv` ya no contiene las filas de este `payment_format` (fueron filtradas y excluidas de la reescritura, o el archivo entero se borró).
+- `output_batch` (las transacciones que pasaban el umbral del promedio) solo existe en memoria del proceso muerto — nunca llegó a `self.output_queue`.
+- El checkpoint todavía no se guardó (eso pasa más adelante, en `_on_avg_message`).
+
+**Al reiniciar:**
+- RabbitMQ redelivera el mensaje de avg (no fue ackeado).
+- El hash no coincide con `last_avg_hash` → se reprocesa → `_flush_to_output` se llama de nuevo para el mismo `payment_format`.
+- Pero `spill.csv` ya no tiene esas filas (se quitaron en el intento anterior) → el reproceso no las encuentra → `output_batch` queda vacío para esas filas.
+
+**Resultado:** **pérdida de datos.** Las transacciones que debían pasar a output para ese `payment_format` se pierden silenciosamente — no se duplican (el archivo ya no las tiene) pero tampoco se vuelven a enviar. Este riesgo es nuevo respecto al diseño anterior (un archivo por `client_id`+`payment_format`), donde `_flush_to_output` enviaba el output **antes** de borrar el archivo, así que el peor caso era un duplicado, nunca una pérdida. Para eliminar esta ventana habría que invertir el orden (enviar el output antes de actualizar `spill.csv`), aceptando duplicados en su lugar — consistente con el patrón "at-least-once" usado en el resto del sistema.
+
+---
+
+### Escenario 10: Caída en `_flush_all_spill_to_output`, después de borrar el spill pero antes de enviar el output al EOF
+
+**Cuándo ocurre:** dentro de `_flush_all_spill_to_output` (llamado por `_try_send_eof` cuando ambos lados — segundo período y avg — completaron para un cliente), el worker ya leyó y filtró todas las filas restantes de `spill.csv`, ya borró el archivo y su directorio, pero todavía no llamó a `_append_output_rows` con el batch final.
+
+```python
+with spill_lock:
+    ...
+    os.remove(path)
+    try:
+        os.rmdir(os.path.dirname(path))
+    except OSError:
+        pass
+# <-- ventana de falla: spill.csv ya borrado, output_batch todavía no enviado
+self._append_output_rows(client_id, output_batch)
+```
+
+**Estado al morir:**
+- `spill.csv` ya no existe — toda la información de las filas pendientes de ese cliente solo vivía en `output_batch`, en memoria.
+- `_try_send_eof` todavía no llegó a mandar el EOF final ni a guardar el checkpoint (esos pasos ocurren después, en el mismo método, fuera de esta función).
+
+**Al reiniciar:**
+- RabbitMQ redelivera el mensaje que disparó `_try_send_eof` (EOF de segundo período o AVG_EOF, según cuál haya sido el último en completar).
+- Se reprocesa: como ambos lados siguen marcados como completos (o se vuelven a completar), `_try_send_eof` se ejecuta de nuevo → llama a `_flush_all_spill_to_output` de nuevo.
+- `spill.csv` ya no existe → la función retorna en el primer `if not os.path.exists(path): return` → nunca se reconstruye `output_batch` ni se reintenta el envío.
+
+**Resultado:** **pérdida de datos**, potencialmente más grave que el Escenario 9 porque ocurre en el flush final de cierre por cliente — todas las filas que quedaron spilleadas hasta el EOF y no se pudieron enviar antes del crash se pierden sin posibilidad de recuperación. Es la ventana de falla más riesgosa introducida por el cambio a escritura atómica en este worker, aunque su duración es muy corta (dos instrucciones de Python dentro del mismo proceso).
 
 ---
 
@@ -667,7 +792,7 @@ Resultado: el EOF downstream no se duplica (correcto), pero queda un mensaje hu�
 `OgDetect` es un worker single-threaded que:
 
 - Consume de su propio routing key del exchange `q4_split_exchange` (uno por instancia).
-- Escribe pares `from_account\tto_account` a `/data/{client_id}/log.bin` en modo `"ab"` con `flush()` antes de cada `ack()`.
+- Escribe pares `from_account\tto_account` a `/data/{client_id}/log.bin` mediante `_append_log`: lee el contenido completo existente, lo escribe junto con las filas nuevas a `log.bin.tmp`, y reemplaza el original con `os.replace` (escritura atómica) antes de cada `ack()`. Ya no usa un file handle persistente en modo `"ab"` con buffer de Python — cada llamada reescribe el archivo entero.
 - Al recibir EOF: lee `log.bin` completo, construye un `account_map` con sets, envía cuentas con >= `MIN_DESTINATIONS` destinos a `sg_detect` (por hash de la cuenta), borra `client_dir`, envía EOF a todos los routing keys de `sg_detect`.
 - No tiene checkpoint. El único estado persistido es el archivo `log.bin`.
 
@@ -675,18 +800,20 @@ Resultado: el EOF downstream no se duplica (correcto), pero queda un mensaje hu�
 
 ### Escenario 1: Caída durante procesamiento de datos, antes de `ack`
 
-Cuándo ocurre: el worker muere mientras escribe filas en `log.bin`, antes o después de `log.flush()`.
+**Cuándo ocurre:** el worker muere mientras `_append_log` escribe `log.bin`, ya sea durante la escritura del archivo temporal `log.bin.tmp` (antes de `os.replace`) o justo después de que `os.replace` lo haya hecho efectivo.
 
-Estado al morir:
-- Si crash antes del `flush()`: el buffer de Python (65536 bytes) se pierde; las filas ya volcadas al kernel persisten.
-- Si crash después del `flush()`: todas las filas del batch están en disco.
+**Estado al morir:**
+- **Crash antes de `os.replace`:** `log.bin` permanece intacto con el contenido anterior al mensaje en curso; el `.tmp` parcial se ignora y se sobreescribe en el próximo intento. No hay riesgo de fila truncada en el archivo real, a diferencia del modo `"ab"` + buffer de Python anterior.
+- **Crash después de `os.replace`:** `log.bin` ya contiene las filas nuevas del mensaje, de forma completa y consistente.
 
-Al reiniciar:
-- RabbitMQ redelivera el mensaje.
-- Las filas se vuelven a escribir en modo `"ab"` → `log.bin` tiene duplicados.
-- En `_on_eof_message`, `account_map[from_acc]` es un `set` → `add(to_acc)` es idempotente → los pares duplicados no afectan el resultado.
+**Al reiniciar:**
+- RabbitMQ redelivera el mensaje (no fue ackeado).
+- `_append_log` se ejecuta de nuevo, leyendo el `log.bin` actual y agregando las mismas filas nuevas.
+- Si el crash fue antes del `replace`: el resultado final es idéntico al de un primer intento exitoso, sin duplicados.
+- Si el crash fue después del `replace`: las filas del mensaje quedan escritas dos veces en `log.bin` (duplicado de líneas).
+- En `_on_eof_message`, `account_map[from_acc]` es un `set` → `add(to_acc)` es idempotente → los pares duplicados no afectan el resultado final.
 
-Resultado: correcto. La estructura de `set` en `_on_eof_message` hace que las escrituras duplicadas sean idempotentes.
+**Resultado:** correcto en ambos sub-casos. El patrón de escritura atómica elimina el riesgo de truncamiento/corrupción a mitad de escritura; el único duplicado posible (líneas repetidas en `log.bin`) sigue protegido por la idempotencia del `set` en `_on_eof_message`, igual que con el diseño anterior.
 
 ---
 
