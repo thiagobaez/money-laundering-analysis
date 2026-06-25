@@ -110,7 +110,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_0
     - AVG_QUEUE=avg_joiner_0
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -131,7 +131,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_1
     - AVG_QUEUE=avg_joiner_1
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -152,7 +152,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_2
     - AVG_QUEUE=avg_joiner_2
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -173,7 +173,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_3
     - AVG_QUEUE=avg_joiner_3
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -194,7 +194,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_4
     - AVG_QUEUE=avg_joiner_4
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -276,7 +276,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
@@ -304,7 +304,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
@@ -332,7 +332,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
