@@ -153,15 +153,18 @@ class SplitDate:
                     self.first_batches.setdefault(client_id, {}).setdefault(
                         idx, []
                     ).append(tx.to_fields())
-                    if len(self.first_batches[client_id][idx]) >= BATCH_SIZE:
-                        self._flush_first_batch(client_id, idx)
                 elif tx.is_in_date_range(SECOND_PERIOD_GE, SECOND_PERIOD_LE):
                     self.second_batches.setdefault(client_id, []).append(tx.to_fields())
-                    if len(self.second_batches[client_id]) >= BATCH_SIZE:
-                        self._flush_second_batch(client_id)
 
             self._last_msg_hash = h
             self._save_checkpoint()
+
+            for idx, batch in list(self.first_batches.get(client_id, {}).items()):
+                self._flush_first_batch(client_id, idx)
+            self._flush_second_batch(client_id)
+
+            self._save_checkpoint()
+
             ack()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error processing message: {e}")

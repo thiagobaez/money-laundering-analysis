@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import yaml
 import argparse
 
@@ -12,8 +11,11 @@ def generate_compose_q4(
     batch_size: int = 10000,
     chaos_monkey: bool = False,
     chaos_kill_interval: int = 30,
+    chaos_exclude_clients: bool = True,
+    chaos_exclude_gateway: bool = True,
     watchdog: bool = False,
     watchdog_timeout: int = 30,
+    watchdog_count: int = 3,
 ):
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
@@ -214,10 +216,12 @@ def generate_compose_q4(
             "INPUT_ROUTING_KEYS=filter_usd",
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
-            f"NUM_EXPECTED_EOFS={n_detect}",
+            "NUM_EXPECTED_EOFS=1",
+            f"SG_DETECT_AMOUNT={n_detect}",
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            "CONTAINER_NAME=gateway",
         ],
     }
 
@@ -235,30 +239,48 @@ def generate_compose_q4(
         "ports": ["5672:5672", "15672:15672"],
     }
 
+    if watchdog:
+        for svc in services.values():
+            env = svc.get("environment", [])
+            if any(e.startswith("CONTAINER_NAME=") for e in env):
+                env.append(f"WATCHDOG_COUNT={watchdog_count}")
+
     if chaos_monkey:
-        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        excluded = ["rabbitmq", "chaos_monkey"]
+        if chaos_exclude_gateway:
+            excluded.append("gateway")
+        if chaos_exclude_clients:
+            excluded.extend(f"client{i}" for i in range(len(input_files)))
         services["chaos_monkey"] = {
             "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
             "container_name": "chaos_monkey",
             "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
             "environment": [
                 f"KILL_INTERVAL={chaos_kill_interval}",
-                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+                f"EXCLUDE_CONTAINERS={','.join(excluded)}",
             ],
             "depends_on": dict(rabbitmq_healthy),
         }
 
     if watchdog:
-        services["watchdog"] = {
-            "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
-            "container_name": "watchdog",
-            "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
-            "environment": [
-                "MOM_HOST=rabbitmq",
-                f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
-            ],
-            "depends_on": dict(rabbitmq_healthy),
-        }
+        for i in range(watchdog_count):
+            services[f"watchdog_{i}"] = {
+                "build": {"context": "./src/", "dockerfile": "watchdog/Dockerfile"},
+                "container_name": f"watchdog_{i}",
+                "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+                "environment": [
+                    "MOM_HOST=rabbitmq",
+                    f"HEARTBEAT_TIMEOUT={watchdog_timeout}",
+                    f"WATCHDOG_ID={i}",
+                    f"WATCHDOG_COUNT={watchdog_count}",
+                    "WATCHDOG_HEARTBEAT_INTERVAL=3",
+                    f"WATCHDOG_TIMEOUT={watchdog_timeout}",
+                    "REVIVE_INTERVAL=5",
+                    "WORKER_EXCHANGE=heartbeat_exchange",
+                    "PEER_EXCHANGE=watchdog_exchange",
+                ],
+                "depends_on": dict(rabbitmq_healthy),
+            }
 
     return {"services": services}
 
@@ -267,7 +289,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q4.yaml")
     parser.add_argument("--input-files", nargs="+", default=["HI-Medium_Trans.csv"])
     parser.add_argument("--output", type=str, default="docker-compose-q4.yaml")
-    parser.add_argument("--batch-size", type=int, default=20000)
+    parser.add_argument("--batch-size", type=int, default=10000)
     parser.add_argument("--filter-usd", type=int, default=3)
     parser.add_argument("--filter-date", type=int, default=3)
     parser.add_argument("--split", type=int, default=3)
@@ -276,6 +298,7 @@ def main():
     parser.add_argument("--chaos-kill-interval", type=int, default=30)
     parser.add_argument("--watchdog", action="store_true", default=False)
     parser.add_argument("--watchdog-timeout", type=int, default=30)
+    parser.add_argument("--watchdog-count", type=int, default=3)
     args = parser.parse_args()
 
     compose = generate_compose_q4(
@@ -289,6 +312,7 @@ def main():
         chaos_kill_interval=args.chaos_kill_interval,
         watchdog=args.watchdog,
         watchdog_timeout=args.watchdog_timeout,
+        watchdog_count=args.watchdog_count,
     )
 
     with open(args.output, "w") as f:

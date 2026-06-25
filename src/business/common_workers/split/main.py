@@ -21,7 +21,6 @@ class Split:
         self._heartbeat = heartbeat
         self.closed = False
         self.eof_received_by_client = []
-        self.eof_done_by_client = []
         self._origin_batches = {}
         self._dest_batches = {}
         self._last_msg_hash: str | None = None
@@ -39,7 +38,6 @@ class Split:
             return
         self._last_msg_hash = state.get("last_msg_hash")
         self.eof_received_by_client = state.get("eof_received_by_client", [])
-        self.eof_done_by_client = state.get("eof_done_by_client", [])
         self._origin_batches = {
             tuple(k.split("|||", 1)): v
             for k, v in state.get("origin_batches", {}).items()
@@ -56,7 +54,6 @@ class Split:
             {
                 "last_msg_hash": self._last_msg_hash,
                 "eof_received_by_client": self.eof_received_by_client,
-                "eof_done_by_client": self.eof_done_by_client,
                 "origin_batches": {
                     f"{k[0]}|||{k[1]}": v for k, v in self._origin_batches.items()
                 },
@@ -101,12 +98,7 @@ class Split:
         for key in DESTINATION_ROUTING_KEYS:
             self._flush_dest_batch(client_id, key)
 
-    def _on_eof(self, client_id, counter):
-        if client_id in self.eof_done_by_client:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] [SPLIT] Discarding stale EOF for client {client_id}"
-            )
-            return
+    def _on_eof(self, client_id, counter, msg_hash):
         self._flush_all_batches(client_id)
         if client_id not in self.eof_received_by_client:
             self.eof_received_by_client.append(client_id)
@@ -122,11 +114,8 @@ class Split:
                     f"[QUERY {QUERY_NUMBER}] [SPLIT] All EOFs received for client {client_id}, forwarding downstream"
                 )
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
-                self.eof_done_by_client.append(client_id)
+                self._last_msg_hash = msg_hash
         else:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] [SPLIT] Re-enqueuing EOF for client {client_id} (counter={counter})"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -136,17 +125,17 @@ class Split:
             ack()
             return
         try:
+            h = checkpoint.msg_hash(message)
+            if h == self._last_msg_hash:
+                ack()
+                return
+
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
             if self._is_eof(fields):
-                self._on_eof(client_id, self._get_eof_counter(fields))
+                self._on_eof(client_id, self._get_eof_counter(fields), h)
                 self._save_checkpoint()
-                ack()
-                return
-
-            h = checkpoint.msg_hash(message)
-            if h == self._last_msg_hash:
                 ack()
                 return
 
@@ -164,7 +153,9 @@ class Split:
                     )
                 ]
 
-                origin_batch = self._origin_batches.setdefault((client_id, origin_key), [])
+                origin_batch = self._origin_batches.setdefault(
+                    (client_id, origin_key), []
+                )
                 origin_batch.append(row)
                 if len(origin_batch) >= BATCH_SIZE:
                     self._flush_origin_batch(client_id, origin_key)

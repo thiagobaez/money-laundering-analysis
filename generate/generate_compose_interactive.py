@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generador interactivo de docker-compose.
 Para cada parametro muestra el valor por defecto entre corchetes;
@@ -116,8 +115,12 @@ def _gen_q1():
     print("  -- Chaos Monkey --")
     use_chaos = _ask_bool("  agregar chaos monkey?", False)
     chaos_kill_interval = 30
+    chaos_exclude_clients = True
+    chaos_exclude_gateway = True
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+        chaos_exclude_clients = _ask_bool("  excluir clientes?", True)
+        chaos_exclude_gateway = _ask_bool("  excluir gateway?", True)
 
     print("  -- Watchdog --")
     use_watchdog = _ask_bool("  agregar watchdog?", False)
@@ -134,6 +137,8 @@ def _gen_q1():
             batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            chaos_exclude_clients=chaos_exclude_clients,
+            chaos_exclude_gateway=chaos_exclude_gateway,
             watchdog=use_watchdog,
             watchdog_timeout=watchdog_timeout,
         ),
@@ -153,8 +158,12 @@ def _gen_q3():
     print("  -- Chaos Monkey --")
     use_chaos = _ask_bool("  agregar chaos monkey?", False)
     chaos_kill_interval = 30
+    chaos_exclude_clients = True
+    chaos_exclude_gateway = True
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+        chaos_exclude_clients = _ask_bool("  excluir clientes?", True)
+        chaos_exclude_gateway = _ask_bool("  excluir gateway?", True)
 
     print("  -- Watchdog --")
     use_watchdog = _ask_bool("  agregar watchdog?", False)
@@ -173,6 +182,8 @@ def _gen_q3():
             batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            chaos_exclude_clients=chaos_exclude_clients,
+            chaos_exclude_gateway=chaos_exclude_gateway,
             watchdog=use_watchdog,
             watchdog_timeout=watchdog_timeout,
         ),
@@ -187,13 +198,17 @@ def _gen_q4():
     n_filter_date = _ask("filter_date  (workers)", 3)
     n_split = _ask("split        (workers)", 3)
     n_detect = _ask("og/dt/sg_det (workers)", 3)
-    batch_size = _ask("batch_size", 20000)
+    batch_size = _ask("batch_size", 10000)
 
     print("  -- Chaos Monkey --")
     use_chaos = _ask_bool("  agregar chaos monkey?", False)
     chaos_kill_interval = 30
+    chaos_exclude_clients = True
+    chaos_exclude_gateway = True
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+        chaos_exclude_clients = _ask_bool("  excluir clientes?", True)
+        chaos_exclude_gateway = _ask_bool("  excluir gateway?", True)
 
     print("  -- Watchdog --")
     use_watchdog = _ask_bool("  agregar watchdog?", False)
@@ -212,6 +227,8 @@ def _gen_q4():
             batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            chaos_exclude_clients=chaos_exclude_clients,
+            chaos_exclude_gateway=chaos_exclude_gateway,
             watchdog=use_watchdog,
             watchdog_timeout=watchdog_timeout,
         ),
@@ -230,8 +247,12 @@ def _gen_q5():
     print("  -- Chaos Monkey --")
     use_chaos = _ask_bool("  agregar chaos monkey?", False)
     chaos_kill_interval = 30
+    chaos_exclude_clients = True
+    chaos_exclude_gateway = True
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+        chaos_exclude_clients = _ask_bool("  excluir clientes?", True)
+        chaos_exclude_gateway = _ask_bool("  excluir gateway?", True)
 
     print("  -- Watchdog --")
     use_watchdog = _ask_bool("  agregar watchdog?", False)
@@ -249,6 +270,8 @@ def _gen_q5():
             batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            chaos_exclude_clients=chaos_exclude_clients,
+            chaos_exclude_gateway=chaos_exclude_gateway,
             watchdog=use_watchdog,
             watchdog_timeout=watchdog_timeout,
         ),
@@ -278,7 +301,7 @@ def _gen_all():
     q4_n_filter_date = _ask("  filter_date  (workers)", 3)
     q4_n_split = _ask("  split        (workers)", 3)
     q4_n_detect = _ask("  og/dt/sg_det (workers)", 3)
-    q4_batch_size = _ask("  batch_size", 20000)
+    q4_batch_size = _ask("  batch_size", 10000)
 
     print("  -- Q5 --")
     q5_n_filter_fmt = _ask("  filter_fmt    (workers)", 7)
@@ -289,8 +312,12 @@ def _gen_all():
     print("  -- Chaos Monkey --")
     use_chaos = _ask_bool("  agregar chaos monkey?", False)
     chaos_kill_interval = 30
+    chaos_exclude_clients = True
+    chaos_exclude_gateway = True
     if use_chaos:
         chaos_kill_interval = _ask("  kill_interval (segundos)", 30)
+        chaos_exclude_clients = _ask_bool("  excluir clientes?", True)
+        chaos_exclude_gateway = _ask_bool("  excluir gateway?", True)
 
     print("  -- Watchdog --")
     use_watchdog = _ask_bool("  agregar watchdog?", False)
@@ -321,6 +348,8 @@ def _gen_all():
             q5_batch_size=q5_batch_size,
             chaos_monkey=use_chaos,
             chaos_kill_interval=chaos_kill_interval,
+            chaos_exclude_clients=chaos_exclude_clients,
+            chaos_exclude_gateway=chaos_exclude_gateway,
             watchdog=use_watchdog,
             watchdog_timeout=watchdog_timeout,
         ),

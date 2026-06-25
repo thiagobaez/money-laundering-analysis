@@ -14,6 +14,7 @@ INPUT_ROUTING_KEY = os.environ["INPUT_ROUTING_KEY"]
 OUTPUT_EXCHANGE_NAME = os.environ["OUTPUT_EXCHANGE_NAME"]
 OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
 MIN_ORIGINS = int(os.environ["MIN_ORIGINS"])
+CONTAINER_NAME = os.environ.get("CONTAINER_NAME", "")
 
 DATA_DIR = "/data"
 
@@ -39,17 +40,28 @@ class DtDetect:
     def _client_dir(self, client_id):
         return os.path.join(DATA_DIR, str(client_id))
 
-    def _get_log(self, client_id):
-        if client_id not in self._logs:
-            client_dir = self._client_dir(client_id)
-            os.makedirs(client_dir, exist_ok=True)
-            self._logs[client_id] = open(
-                os.path.join(client_dir, "log.bin"), "ab", buffering=65536
-            )
-        return self._logs[client_id]
+    def _append_log(self, client_id, new_bytes):
+        if not new_bytes:
+            return
+        client_dir = self._client_dir(client_id)
+        os.makedirs(client_dir, exist_ok=True)
+        path = os.path.join(client_dir, "log.bin")
+        tmp_path = path + ".tmp"
+
+        existing = b""
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                existing = f.read()
+
+        with open(tmp_path, "wb") as f:
+            f.write(existing)
+            f.write(new_bytes)
+        os.replace(tmp_path, path)
 
     def _on_eof_message(self, client_id):
-        logging.info(f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}")
+        logging.info(
+            f"[QUERY {QUERY_NUMBER}] [DT_DETECT] EOF received for client {client_id}"
+        )
         if client_id in self._logs:
             self._logs.pop(client_id).close()
 
@@ -77,7 +89,9 @@ class DtDetect:
             shutil.rmtree(client_dir)
 
         self.output_queue.send(
-            message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+            message_protocol.internal.serialize(
+                [client_id, QUERY_NUMBER, CONTAINER_NAME]
+            )
         )
 
     def _on_message(self, message, ack, nack):
@@ -93,12 +107,8 @@ class DtDetect:
                 ack()
                 return
 
-            log = self._get_log(client_id)
-            for row in fields[2]:
-                from_account = row[2]
-                to_account = row[4]
-                log.write(f"{to_account}\t{from_account}\n".encode())
-            log.flush()
+            new_bytes = b"".join(f"{row[4]}\t{row[2]}\n".encode() for row in fields[2])
+            self._append_log(client_id, new_bytes)
 
             ack()
         except Exception as e:

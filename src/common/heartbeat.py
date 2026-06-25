@@ -3,15 +3,18 @@ import os
 import threading
 import time
 
-from common.middleware.middleware_rabbitmq import MessageMiddlewareQueueRabbitMQ
 from common.message_protocol import internal
+from common.middleware.middleware_rabbitmq import MessageMiddlewareExchangeRabbitMQ
+
+HEARTBEAT_EXCHANGE = "heartbeat_exchange"
+WATCHDOG_COUNT = int(os.environ.get("WATCHDOG_COUNT", "0"))
+CONTAINER_NAME = os.environ.get("CONTAINER_NAME", "")
+MOM_HOST = os.environ["MOM_HOST"]
+HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL", "3"))
 
 
 class HeartbeatSender:
-    def __init__(self, container_name: str, mom_host: str, interval: float = 10.0):
-        self._container_name = container_name
-        self._mom_host = mom_host
-        self._interval = interval
+    def __init__(self):
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -23,44 +26,36 @@ class HeartbeatSender:
         self._thread.join()
 
     def _run(self):
+
+        if WATCHDOG_COUNT == 0:
+            return
+        routing_keys = [f"watchdog_{i}" for i in range(WATCHDOG_COUNT)]
         while not self._stop_event.is_set():
-            queue = None
+            sender = None
             try:
-                queue = MessageMiddlewareQueueRabbitMQ(
-                    self._mom_host, "heartbeat_queue"
+                sender = MessageMiddlewareExchangeRabbitMQ(
+                    MOM_HOST, HEARTBEAT_EXCHANGE, routing_keys
                 )
                 while not self._stop_event.is_set():
-                    queue.send(
+                    sender.send(
                         internal.serialize(
-                            {
-                                "container": self._container_name,
-                                "ts": time.time(),
-                            }
+                            {"container": CONTAINER_NAME, "ts": time.time()}
                         )
                     )
-                    logging.debug(
-                        f"[HEARTBEAT] {self._container_name}: Sending heartbeat"
-                    )
-                    time.sleep(self._interval)
+                    time.sleep(HEARTBEAT_INTERVAL)
             except Exception as e:
-                logging.warning(
-                    f"[HEARTBEAT] {self._container_name}: {e}, retrying in 5s"
-                )
                 time.sleep(5)
             finally:
-                if queue is not None:
+                if sender is not None:
                     try:
-                        queue.close()
+                        sender.close()
                     except Exception:
                         pass
 
 
 def start_if_configured():
-    name = os.environ.get("CONTAINER_NAME", "")
-    host = os.environ.get("MOM_HOST", "rabbitmq")
-    interval = float(os.environ.get("HEARTBEAT_INTERVAL", "3"))
-    if name:
-        sender = HeartbeatSender(name, host, interval)
+    if CONTAINER_NAME:
+        sender = HeartbeatSender()
         sender.start()
         return sender
     return None

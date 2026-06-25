@@ -84,15 +84,16 @@ class Filter:
             self._last_msg_hash = state.get("last_msg_hash")
             self.eof_seen = set(state.get("eof_seen", []))
             logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
-
         if os.path.isdir(DATA_DIR):
             for entry in os.listdir(DATA_DIR):
                 client_dir = os.path.join(DATA_DIR, entry)
                 if os.path.isdir(client_dir):
-                    logging.info(
-                        f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
-                    )
-                    self._send_disk_rows(entry)
+                    path = self._file_path(entry)
+                    if os.path.exists(path):
+                        logging.info(
+                            f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
+                        )
+                        self._send_disk_rows(entry)
 
     def _save_checkpoint(self):
         checkpoint.save(
@@ -113,10 +114,19 @@ class Filter:
 
         path = self._file_path(client_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + ".tmp"
 
-        with open(path, "a", newline="") as f:
+        existing_rows = []
+        if os.path.exists(path):
+            with open(path, "r", newline="") as f:
+                existing_rows = list(csv.reader(f))
+
+        with open(tmp_path, "w", newline="") as f:
             writer = csv.writer(f)
+            writer.writerows(existing_rows)
             writer.writerows(rows)
+        os.replace(tmp_path, path)
+
         self._disk_counts[client_id] = self._disk_counts.get(client_id, 0) + len(rows)
 
     def _send_disk_rows(self, client_id):
@@ -128,6 +138,10 @@ class Filter:
             rows = list(csv.reader(f))
         self._send_batch(client_id, rows)
         os.remove(path)
+        try:
+            os.rmdir(os.path.dirname(path))
+        except OSError:
+            pass
         self._disk_counts[client_id] = 0
 
     def _parse_transaction(self, fields):
@@ -171,15 +185,13 @@ class Filter:
 
         if client_id not in self.eof_seen:
             self.eof_seen.add(client_id)
-            logging.error(
-                f"[QUERY {QUERY_NUMBER}] [FILTER] EOF received for client {client_id}"
-            )
+
             if counter > 1:
                 self.input_queue.send(
                     message_protocol.internal.serialize([client_id, "EOF", counter - 1])
                 )
             else:
-                logging.error(
+                logging.info(
                     f"[QUERY {QUERY_NUMBER}] [FILTER] Sending EOF downstream for client {client_id} (first time, counter=1)"
                 )
                 self._send_output(message_protocol.internal.serialize([client_id]))
@@ -187,9 +199,6 @@ class Filter:
                 self._save_checkpoint()
                 self.eof_seen.discard(client_id)
         else:
-            logging.error(
-                f"[QUERY {QUERY_NUMBER}] [FILTER] client {client_id} already in eof_seen, re-enqueuing counter={counter}"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
@@ -229,7 +238,6 @@ class Filter:
             nack()
 
     def run(self):
-        logging.info(f"[QUERY {QUERY_NUMBER}] Starting filter worker")
         self.input_queue.start_consuming(self._on_message)
 
     def close(self):
@@ -247,7 +255,7 @@ class Filter:
 
 def main():
     logging.getLogger("pika").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.ERROR)
+    logging.basicConfig(level=logging.INFO)
     from common.heartbeat import start_if_configured
 
     heartbeat = start_if_configured()

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import csv
 import os
 import sys
@@ -24,6 +22,10 @@ def _row_key_q4(row: list[str]):
     dest = row[1]
     intermediates = frozenset(row[2:])
     return (origin, dest, intermediates)
+
+
+def _row_key_q5(row: list[str]):
+    return tuple(row[:5]) + tuple(row[6:])
 
 
 def _compare_query(
@@ -119,7 +121,7 @@ QUERY_CONFIG = {
     1: {"row_key": _row_key_default, "has_header": True},
     3: {"row_key": _row_key_default, "has_header": True},
     4: {"row_key": _row_key_q4, "has_header": False},
-    5: {"row_key": _row_key_default, "has_header": True},
+    5: {"row_key": _row_key_q5, "has_header": True},
 }
 
 
