@@ -9,7 +9,7 @@ MOM_HOST = os.environ["MOM_HOST"]
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 INPUT_QUEUE = os.environ["INPUT_QUEUE"]
 FIRST_PERIOD_QUEUES = os.environ["FIRST_PERIOD_QUEUES"].split(",")
-SECOND_PERIOD_QUEUE = os.environ["SECOND_PERIOD_QUEUE"]
+SECOND_PERIOD_QUEUES = os.environ["SECOND_PERIOD_QUEUES"].split(",")
 FIRST_PERIOD_GE = os.environ["FIRST_PERIOD_GE"]
 FIRST_PERIOD_LE = os.environ["FIRST_PERIOD_LE"]
 SECOND_PERIOD_GE = os.environ["SECOND_PERIOD_GE"]
@@ -33,9 +33,10 @@ class SplitDate:
             middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
             for q in FIRST_PERIOD_QUEUES
         ]
-        self.second_period_queue = middleware.MessageMiddlewareQueueRabbitMQ(
-            MOM_HOST, SECOND_PERIOD_QUEUE
-        )
+        self.second_period_queues = [
+            middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, q)
+            for q in SECOND_PERIOD_QUEUES
+        ]
         self._load_checkpoint()
 
     def _load_checkpoint(self):
@@ -78,6 +79,14 @@ class SplitDate:
             hash_value &= 0xFFFFFFFF
         return hash_value % len(self.first_period_queues)
 
+    def _get_second_queue_idx(self, key) -> int:
+        hash_value = 5381
+        for c in key:
+            hash_value = ((hash_value << 5) + hash_value) + ord(c)
+            hash_value &= 0xFFFFFFFF
+
+        return hash_value % len(self.second_period_queues)
+
     def _flush_first_batch(self, client_id, idx):
         batch = self.first_batches.get(client_id, {}).pop(idx, [])
 
@@ -89,7 +98,9 @@ class SplitDate:
     def _flush_second_batch(self, client_id):
         batch = self.second_batches.pop(client_id, [])
         if batch:
-            self.second_period_queue.send(
+            key = "|".join(map(str, batch[0]))
+            idx = self._get_second_queue_idx(key)
+            self.second_period_queues[idx].send(
                 message_protocol.internal.serialize([client_id, batch])
             )
 
@@ -116,7 +127,8 @@ class SplitDate:
                 )
                 for q in self.first_period_queues:
                     q.send(eof)
-                self.second_period_queue.send(eof)
+                idx = self._get_second_queue_idx(client_id)
+                self.second_period_queues[idx].send(eof)
                 self._last_msg_hash = msg_hash
                 self._save_checkpoint()
                 self.eof_seen.discard(client_id)
@@ -183,7 +195,8 @@ class SplitDate:
             self.input_queue.close()
             for q in self.first_period_queues:
                 q.close()
-            self.second_period_queue.close()
+            for q in self.second_period_queues:
+                q.close()
         except Exception as e:
             logging.error(f"[QUERY {QUERY_NUMBER}] Error closing resources: {e}")
 
