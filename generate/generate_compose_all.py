@@ -40,6 +40,7 @@ def generate_compose_all(
 
     q3_avg_joiner_rks = ",".join([f"avg_joiner_{i}" for i in range(q3_n_avg_joiner)])
     q3_avg_rks = ",".join([f"avg_queue_{i}" for i in range(q3_n_avg)])
+    q3_second_period_rks = ",".join([f"second_period_queue_{i}" for i in range(q3_n_avg_joiner)])
 
     for i in range(q4_n_detect):
         services[f"q4_sg_detect_{i}"] = {
@@ -211,7 +212,7 @@ def generate_compose_all(
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
-                "SECOND_PERIOD_QUEUE=second_period_queue",
+                f"SECOND_PERIOD_QUEUE=second_period_queue_{i}",
                 f"AVG_QUEUE=avg_joiner_{i}",
                 "OUTPUT_QUEUE=results_queue",
                 f"AVG_JOINER_AMOUNT={q3_n_avg_joiner}",
@@ -266,7 +267,7 @@ def generate_compose_all(
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=q3_split_queue",
                 f"FIRST_PERIOD_QUEUES={q3_avg_rks}",
-                "SECOND_PERIOD_QUEUE=second_period_queue",
+                f"SECOND_PERIOD_QUEUES={q3_second_period_rks}",
                 "FIRST_PERIOD_GE=2022-09-01",
                 "FIRST_PERIOD_LE=2022-09-05",
                 "SECOND_PERIOD_GE=2022-09-06",

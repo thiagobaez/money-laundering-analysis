@@ -22,7 +22,7 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - CONTAINER_NAME=q4_sg_detect_0
     - WATCHDOG_COUNT=3
   q4_sg_detect_1:
@@ -47,7 +47,7 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - CONTAINER_NAME=q4_sg_detect_1
     - WATCHDOG_COUNT=3
   q4_sg_detect_2:
@@ -72,7 +72,7 @@ services:
     - MIN_COMMON=5
     - NUM_OG_WORKERS=3
     - NUM_DT_WORKERS=3
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - CONTAINER_NAME=q4_sg_detect_2
     - WATCHDOG_COUNT=3
   q4_og_detect_0:
@@ -239,7 +239,7 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_0
     - WATCHDOG_COUNT=3
@@ -266,7 +266,7 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_1
     - WATCHDOG_COUNT=3
@@ -293,7 +293,7 @@ services:
     - ORIGIN_ROUTING_KEYS=tx_origin_1,tx_origin_2,tx_origin_3
     - DESTINATION_ROUTING_KEYS=tx_destination_1,tx_destination_2,tx_destination_3
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_split_2
     - WATCHDOG_COUNT=3
@@ -321,7 +321,7 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_0
     - WATCHDOG_COUNT=3
@@ -346,7 +346,7 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_1
     - WATCHDOG_COUNT=3
@@ -371,7 +371,7 @@ services:
     - INPUT_QUEUE=q4_filter_date
     - OUTPUT_QUEUES=tx_usd_date
     - MOM_HOST=rabbitmq
-    - BATCH_SIZE=10000
+    - BATCH_SIZE=20000
     - DATA_DIR=/data
     - CONTAINER_NAME=q4_filter_date_2
     - WATCHDOG_COUNT=3
@@ -456,7 +456,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_0
     - AVG_QUEUE=avg_joiner_0
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -477,7 +477,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_1
     - AVG_QUEUE=avg_joiner_1
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -498,7 +498,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_2
     - AVG_QUEUE=avg_joiner_2
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -519,7 +519,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_3
     - AVG_QUEUE=avg_joiner_3
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -540,7 +540,7 @@ services:
     environment:
     - QUERY_NUMBER=3
     - MOM_HOST=rabbitmq
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUE=second_period_queue_4
     - AVG_QUEUE=avg_joiner_4
     - OUTPUT_QUEUE=results_queue
     - AVG_JOINER_AMOUNT=5
@@ -618,7 +618,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
@@ -644,7 +644,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
@@ -670,7 +670,7 @@ services:
     - MOM_HOST=rabbitmq
     - INPUT_QUEUE=q3_split_queue
     - FIRST_PERIOD_QUEUES=avg_queue_0,avg_queue_1
-    - SECOND_PERIOD_QUEUE=second_period_queue
+    - SECOND_PERIOD_QUEUES=second_period_queue_0,second_period_queue_1,second_period_queue_2,second_period_queue_3,second_period_queue_4
     - FIRST_PERIOD_GE=2022-09-01
     - FIRST_PERIOD_LE=2022-09-05
     - SECOND_PERIOD_GE=2022-09-06
@@ -1264,7 +1264,7 @@ services:
     environment:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
-    - INPUT_FILE=/datasets/HI-Medium_Trans.csv
+    - INPUT_FILE=/datasets/HI-Small_Trans.csv
     - OUTPUT_FILE=/output/client0/output.csv
     volumes:
     - ./datasets:/datasets
@@ -1326,11 +1326,11 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
-    - HEARTBEAT_TIMEOUT=10
+    - HEARTBEAT_TIMEOUT=30
     - WATCHDOG_ID=0
     - WATCHDOG_COUNT=3
     - WATCHDOG_HEARTBEAT_INTERVAL=3
-    - WATCHDOG_TIMEOUT=10
+    - WATCHDOG_TIMEOUT=30
     - REVIVE_INTERVAL=5
     - WORKER_EXCHANGE=heartbeat_exchange
     - PEER_EXCHANGE=watchdog_exchange
@@ -1345,11 +1345,11 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
-    - HEARTBEAT_TIMEOUT=10
+    - HEARTBEAT_TIMEOUT=30
     - WATCHDOG_ID=1
     - WATCHDOG_COUNT=3
     - WATCHDOG_HEARTBEAT_INTERVAL=3
-    - WATCHDOG_TIMEOUT=10
+    - WATCHDOG_TIMEOUT=30
     - REVIVE_INTERVAL=5
     - WORKER_EXCHANGE=heartbeat_exchange
     - PEER_EXCHANGE=watchdog_exchange
@@ -1364,11 +1364,11 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
-    - HEARTBEAT_TIMEOUT=10
+    - HEARTBEAT_TIMEOUT=30
     - WATCHDOG_ID=2
     - WATCHDOG_COUNT=3
     - WATCHDOG_HEARTBEAT_INTERVAL=3
-    - WATCHDOG_TIMEOUT=10
+    - WATCHDOG_TIMEOUT=30
     - REVIVE_INTERVAL=5
     - WORKER_EXCHANGE=heartbeat_exchange
     - PEER_EXCHANGE=watchdog_exchange
