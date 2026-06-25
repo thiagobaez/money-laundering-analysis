@@ -95,6 +95,10 @@ class Filter:
                     if entry in self._disk_sent:
                         if os.path.exists(path):
                             os.remove(path)
+                        try:
+                            os.rmdir(client_dir)
+                        except OSError:
+                            pass
                         self._disk_sent.discard(entry)
                     elif os.path.exists(path):
                         logging.info(
@@ -139,6 +143,10 @@ class Filter:
         self._disk_sent.add(client_id)
         self._save_checkpoint()
         os.remove(path)
+        try:
+            os.rmdir(os.path.dirname(path))
+        except OSError:
+            pass
         self._disk_sent.discard(client_id)
         self._disk_counts[client_id] = 0
 

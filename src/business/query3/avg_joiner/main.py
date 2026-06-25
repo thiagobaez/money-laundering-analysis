@@ -176,6 +176,10 @@ class AvgJoiner:
                     os.remove(path)
                 except FileNotFoundError:
                     pass
+            try:
+                os.rmdir(client_dir)
+            except OSError:
+                pass
 
         with self.spill_lock:
             self.spill_batches.pop(client_id, None)
