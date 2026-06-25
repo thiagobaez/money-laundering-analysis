@@ -45,7 +45,8 @@ def generate_compose_q3(
             "INPUT_QUEUE=filter_usd_queue",
             "MOM_HOST=rabbitmq",
             "OUTPUT_QUEUE=results_queue",
-            f"NUM_EXPECTED_EOFS={n_avg_joiner}",
+            "NUM_EXPECTED_EOFS=1",
+            f"AVG_JOINER_AMOUNT={n_avg_joiner}",
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
@@ -180,7 +181,7 @@ def generate_compose_q3(
             "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
             "environment": [
                 f"KILL_INTERVAL={chaos_kill_interval}",
-                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,gateway,{client_names}",
             ],
             "depends_on": dict(rabbitmq_healthy),
         }

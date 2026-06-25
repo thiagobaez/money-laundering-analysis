@@ -179,7 +179,7 @@ def generate_compose(
             "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
             "environment": [
                 f"KILL_INTERVAL={chaos_kill_interval}",
-                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,{client_names}",
+                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,gateway,{client_names}",
             ],
             "depends_on": dict(rabbitmq_healthy),
         }

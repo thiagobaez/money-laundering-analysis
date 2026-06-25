@@ -34,8 +34,8 @@ class SgDetect:
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(
             MOM_HOST, OUTPUT_QUEUE
         )
-        self.origins_eofs: dict[str, int] = {}
-        self.destinations_eofs: dict[str, int] = {}
+        self.origins_eofs: dict[str, set] = {}
+        self.destinations_eofs: dict[str, set] = {}
         self._last_origins_hash: str | None = None
         self._last_destinations_hash: str | None = None
         self._load_checkpoint()
@@ -46,8 +46,8 @@ class SgDetect:
             return
         self._last_origins_hash = state.get("last_origins_hash")
         self._last_destinations_hash = state.get("last_destinations_hash")
-        self.origins_eofs = state.get("origins_eofs", {})
-        self.destinations_eofs = state.get("destinations_eofs", {})
+        self.origins_eofs = {k: set(v) for k, v in state.get("origins_eofs", {}).items()}
+        self.destinations_eofs = {k: set(v) for k, v in state.get("destinations_eofs", {}).items()}
         logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Resumed from checkpoint")
 
     def _save_checkpoint(self):
@@ -57,8 +57,8 @@ class SgDetect:
                 {
                     "last_origins_hash": self._last_origins_hash,
                     "last_destinations_hash": self._last_destinations_hash,
-                    "origins_eofs": self.origins_eofs,
-                    "destinations_eofs": self.destinations_eofs,
+                    "origins_eofs": {k: list(v) for k, v in self.origins_eofs.items()},
+                    "destinations_eofs": {k: list(v) for k, v in self.destinations_eofs.items()},
                 },
             )
 
@@ -81,14 +81,13 @@ class SgDetect:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 2:
+            if len(fields) == 3:
+                worker_id = fields[2]
                 with self._lock:
-                    self.origins_eofs[client_id] = (
-                        self.origins_eofs.get(client_id, 0) + 1
-                    )
-                    count = self.origins_eofs[client_id]
+                    self.origins_eofs.setdefault(client_id, set()).add(worker_id)
+                    count = len(self.origins_eofs[client_id])
                     logging.info(
-                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Origins EOF received for client {client_id} ({count}/{NUM_OG_WORKERS})"
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Origins EOF received for client {client_id} ({count}/{NUM_OG_WORKERS}) from {worker_id}"
                     )
                     if count >= NUM_OG_WORKERS:
                         self._check_and_emit(client_id)
@@ -124,14 +123,13 @@ class SgDetect:
             fields = message_protocol.internal.deserialize(message)
             client_id = fields[0]
 
-            if len(fields) == 2:
+            if len(fields) == 3:
+                worker_id = fields[2]
                 with self._lock:
-                    self.destinations_eofs[client_id] = (
-                        self.destinations_eofs.get(client_id, 0) + 1
-                    )
-                    count = self.destinations_eofs[client_id]
+                    self.destinations_eofs.setdefault(client_id, set()).add(worker_id)
+                    count = len(self.destinations_eofs[client_id])
                     logging.info(
-                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Destinations EOF received for client {client_id} ({count}/{NUM_DT_WORKERS})"
+                        f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Destinations EOF received for client {client_id} ({count}/{NUM_DT_WORKERS}) from {worker_id}"
                     )
                     if count >= NUM_DT_WORKERS:
                         self._check_and_emit(client_id)
@@ -161,8 +159,8 @@ class SgDetect:
 
     def _check_and_emit(self, client_id):
         """Called with self._lock held. Emits results when both origins and destinations EOFs are complete."""
-        og_done = self.origins_eofs.get(client_id, 0) >= NUM_OG_WORKERS
-        dt_done = self.destinations_eofs.get(client_id, 0) >= NUM_DT_WORKERS
+        og_done = len(self.origins_eofs.get(client_id, set())) >= NUM_OG_WORKERS
+        dt_done = len(self.destinations_eofs.get(client_id, set())) >= NUM_DT_WORKERS
         if not (og_done and dt_done):
             return
         logging.info(

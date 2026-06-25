@@ -15,6 +15,7 @@ ORIGIN_ROUTING_KEY = os.environ["ORIGIN_ROUTING_KEY"]
 OUTPUT_EXCHANGE_NAME = os.environ["OUTPUT_EXCHANGE_NAME"]
 OUTPUT_ROUTING_KEYS = os.environ["OUTPUT_ROUTING_KEYS"].split(",")
 MIN_DESTINATIONS = int(os.environ["MIN_DESTINATIONS"])
+CONTAINER_NAME = os.environ.get("CONTAINER_NAME", "")
 
 DATA_DIR = "/data"
 
@@ -83,7 +84,7 @@ class OgDetect:
         if os.path.exists(client_dir):
             shutil.rmtree(client_dir)
 
-        eof = message_protocol.internal.serialize([client_id, QUERY_NUMBER])
+        eof = message_protocol.internal.serialize([client_id, QUERY_NUMBER, CONTAINER_NAME])
         for routing_key in OUTPUT_ROUTING_KEYS:
             self.output_queue.send(eof, routing_key)
 

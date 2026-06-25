@@ -116,9 +116,6 @@ class Split:
                 self.output_queue.send(message_protocol.internal.serialize([client_id]))
                 self._last_msg_hash = msg_hash
         else:
-            logging.info(
-                f"[QUERY {QUERY_NUMBER}] [SPLIT] Re-enqueuing EOF for client {client_id} (counter={counter})"
-            )
             self.input_queue.send(
                 message_protocol.internal.serialize([client_id, "EOF", counter])
             )
