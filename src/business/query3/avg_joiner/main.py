@@ -257,10 +257,10 @@ class AvgJoiner:
                 with self.eof_coord_lock:
                     self.sp_eof_done.add(client_id)
 
-                self._last_sp_hash = h
-                self._save_checkpoint()
 
                 self._try_send_eof(client_id, h)
+                self._last_sp_hash = h
+                self._save_checkpoint()
 
                 ack()
                 return
