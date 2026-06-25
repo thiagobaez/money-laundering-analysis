@@ -169,6 +169,10 @@ def handle_client_response(client_map, active_clients, num_expected_eofs):
 
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
                     del client_map[client_id]
                     _remove_active_client(client_id)
                     del eof_counts[client_id]
@@ -195,6 +199,10 @@ def handle_client_response(client_map, active_clients, num_expected_eofs):
 
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
                     del client_map[client_id]
                     _remove_active_client(client_id)
                     del eof_counts[client_id]
@@ -216,6 +224,10 @@ def handle_client_response(client_map, active_clients, num_expected_eofs):
 
                 if eof_counts[client_id] >= num_expected_eofs:
                     external.send_msg(client_socket, external.MsgType.EOF)
+                    try:
+                        client_socket.close()
+                    except Exception:
+                        pass
                     del client_map[client_id]
                     _remove_active_client(client_id)
                     del eof_counts[client_id]
@@ -229,6 +241,11 @@ def handle_client_response(client_map, active_clients, num_expected_eofs):
         except socket.error:
             logging.error("The connection with the client was lost")
             if client_id is not None and client_id in client_map:
+                _, client_socket = client_map[client_id]
+                try:
+                    client_socket.close()
+                except Exception:
+                    pass
                 del client_map[client_id]
                 _remove_active_client(client_id)
                 _send_cancellation_eof(client_id)
