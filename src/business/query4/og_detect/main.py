@@ -44,14 +44,23 @@ class OgDetect:
     def _client_dir(self, client_id):
         return os.path.join(DATA_DIR, str(client_id))
 
-    def _get_log(self, client_id):
-        if client_id not in self._logs:
-            client_dir = self._client_dir(client_id)
-            os.makedirs(client_dir, exist_ok=True)
-            self._logs[client_id] = open(
-                os.path.join(client_dir, "log.bin"), "ab", buffering=65536
-            )
-        return self._logs[client_id]
+    def _append_log(self, client_id, new_bytes):
+        if not new_bytes:
+            return
+        client_dir = self._client_dir(client_id)
+        os.makedirs(client_dir, exist_ok=True)
+        path = os.path.join(client_dir, "log.bin")
+        tmp_path = path + ".tmp"
+
+        existing = b""
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                existing = f.read()
+
+        with open(tmp_path, "wb") as f:
+            f.write(existing)
+            f.write(new_bytes)
+        os.replace(tmp_path, path)
 
     def _on_eof_message(self, client_id):
         logging.info(
@@ -103,12 +112,8 @@ class OgDetect:
                 ack()
                 return
 
-            log = self._get_log(client_id)
-            for row in fields[2]:
-                from_account = row[2]
-                to_account = row[4]
-                log.write(f"{from_account}\t{to_account}\n".encode())
-            log.flush()
+            new_bytes = b"".join(f"{row[2]}\t{row[4]}\n".encode() for row in fields[2])
+            self._append_log(client_id, new_bytes)
 
             ack()
         except Exception as e:

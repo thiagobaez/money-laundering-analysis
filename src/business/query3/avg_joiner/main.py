@@ -26,8 +26,8 @@ class AvgJoiner:
         self.avg_eof_seen: dict[str, set] = {}
         self.avg_results: dict[str, dict[str, float]] = {}
         self.avg_results_lock = threading.Lock()
-        self.file_locks: dict[tuple, threading.Lock] = {}
-        self.file_locks_lock = threading.Lock()
+        self.spill_locks: dict[str, threading.Lock] = {}
+        self.spill_locks_lock = threading.Lock()
         self.spill_batches: dict[str, dict[str, list]] = {}
         self.spill_lock = threading.Lock()
         self.eof_coord_lock = threading.Lock()
@@ -77,17 +77,16 @@ class AvgJoiner:
                 },
             )
 
-    def _get_file_lock(self, client_id: str, payment_format: str) -> threading.Lock:
-        key = (client_id, payment_format)
-        with self.file_locks_lock:
-            if key not in self.file_locks:
-                self.file_locks[key] = threading.Lock()
-            return self.file_locks[key]
+    def _get_spill_lock(self, client_id: str) -> threading.Lock:
+        with self.spill_locks_lock:
+            if client_id not in self.spill_locks:
+                self.spill_locks[client_id] = threading.Lock()
+            return self.spill_locks[client_id]
 
-    def _file_path(self, client_id: str, payment_format: str) -> str:
+    def _spill_path(self, client_id: str) -> str:
         client_dir = os.path.join(DATA_DIR, client_id)
         os.makedirs(client_dir, exist_ok=True)
-        return os.path.join(client_dir, f"{payment_format}.csv")
+        return os.path.join(client_dir, "spill.csv")
 
     def _spill_tx(self, client_id: str, tx):
         payment_format = tx.get_payment_format()
@@ -97,35 +96,43 @@ class AvgJoiner:
                 payment_format, []
             ).append(tx.to_fields())
 
-            should_flush = (
-                len(self.spill_batches[client_id][payment_format]) >= BATCH_SIZE
+            total_rows = sum(
+                len(rows) for rows in self.spill_batches[client_id].values()
             )
+            should_flush = total_rows >= BATCH_SIZE
 
         if should_flush:
-            self._flush_spill_batch(client_id, payment_format)
+            self._flush_spill_to_disk(client_id)
 
-    def _flush_all_spill_batches(self, client_id: str):
+    def _flush_spill_to_disk(self, client_id: str):
         with self.spill_lock:
-            formats = list(self.spill_batches.get(client_id, {}).keys())
-        for payment_format in formats:
-            self._flush_spill_batch(client_id, payment_format)
-
-    def _flush_spill_batch(self, client_id: str, payment_format: str):
-        with self.spill_lock:
-            rows = self.spill_batches.get(client_id, {}).get(payment_format, [])
+            client_batches = self.spill_batches.get(client_id, {})
+            rows = [
+                [payment_format] + fields
+                for payment_format, fmt_rows in client_batches.items()
+                for fields in fmt_rows
+            ]
 
             if not rows:
                 return
 
-            self.spill_batches[client_id][payment_format] = []
+            self.spill_batches[client_id] = {}
 
-        path = self._file_path(client_id, payment_format)
-        file_lock = self._get_file_lock(client_id, payment_format)
+        path = self._spill_path(client_id)
+        tmp_path = path + ".tmp"
+        spill_lock = self._get_spill_lock(client_id)
 
-        with file_lock:
-            with open(path, "a", newline="") as f:
+        with spill_lock:
+            existing_rows = []
+            if os.path.exists(path):
+                with open(path, "r", newline="") as f:
+                    existing_rows = list(csv.reader(f))
+
+            with open(tmp_path, "w", newline="") as f:
                 writer = csv.writer(f)
+                writer.writerows(existing_rows)
                 writer.writerows(rows)
+            os.replace(tmp_path, path)
 
     def _send_output(self, message):
         with self.output_lock:
@@ -140,32 +147,46 @@ class AvgJoiner:
         )
 
     def _flush_to_output(self, client_id: str, payment_format: str, avg: float):
-        self._flush_spill_batch(client_id, payment_format)
-        path = self._file_path(client_id, payment_format)
-        file_lock = self._get_file_lock(client_id, payment_format)
+        path = self._spill_path(client_id)
+        spill_lock = self._get_spill_lock(client_id)
 
         output_batch = []
 
-        with file_lock:
+        with spill_lock:
             if not os.path.exists(path):
                 return
             with open(path, "r", newline="") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    try:
-                        tx = transaction_item.TransactionItem(*row)
-                        if tx.is_sent_amount_below(avg / 100):
-                            output_batch.append(tx.to_fields())
+                rows = list(csv.reader(f))
 
-                    except Exception as e:
-                        logging.error(
-                            f"[QUERY {QUERY_NUMBER}] Error processing tx from disk: {e}"
-                        )
-        self._append_output_rows(client_id, output_batch)
+            remaining_rows = []
+            for row in rows:
+                if not row:
+                    continue
+                if row[0] != payment_format:
+                    remaining_rows.append(row)
+                    continue
+                try:
+                    tx = transaction_item.TransactionItem(*row[1:])
+                    if tx.is_sent_amount_below(avg / 100):
+                        output_batch.append(tx.to_fields())
+                except Exception as e:
+                    logging.error(
+                        f"[QUERY {QUERY_NUMBER}] Error processing tx from disk: {e}"
+                    )
 
-        with file_lock:
-            if os.path.exists(path):
+            if remaining_rows:
+                tmp_path = path + ".tmp"
+                with open(tmp_path, "w", newline="") as f:
+                    csv.writer(f).writerows(remaining_rows)
+                os.replace(tmp_path, path)
+            else:
                 os.remove(path)
+                try:
+                    os.rmdir(os.path.dirname(path))
+                except OSError:
+                    pass
+
+        self._append_output_rows(client_id, output_batch)
 
     def _cleanup_client(self, client_id: str):
         client_dir = os.path.join(DATA_DIR, client_id)
@@ -184,29 +205,46 @@ class AvgJoiner:
         with self.spill_lock:
             self.spill_batches.pop(client_id, None)
 
-        with self.file_locks_lock:
-            keys_to_remove = [k for k in self.file_locks if k[0] == client_id]
-            for k in keys_to_remove:
-                del self.file_locks[k]
+        with self.spill_locks_lock:
+            self.spill_locks.pop(client_id, None)
 
     def _flush_all_spill_to_output(self, client_id: str):
-        with self.avg_results_lock:
-            client_avgs = dict(self.avg_results.get(client_id, {}))
-
-        with self.spill_lock:
-            pending_formats = set(self.spill_batches.get(client_id, {}).keys())
-
-        for payment_format in pending_formats:
-            if payment_format in client_avgs:
-                self._flush_to_output(
-                    client_id, payment_format, client_avgs[payment_format]
-                )
+        path = self._spill_path(client_id)
+        spill_lock = self._get_spill_lock(client_id)
 
         with self.avg_results_lock:
             client_avgs = dict(self.avg_results.get(client_id, {}))
 
-        for payment_format, avg in client_avgs.items():
-            self._flush_to_output(client_id, payment_format, avg)
+        output_batch = []
+
+        with spill_lock:
+            if not os.path.exists(path):
+                return
+            with open(path, "r", newline="") as f:
+                rows = list(csv.reader(f))
+            for row in rows:
+                if not row:
+                    continue
+                payment_format = row[0]
+                avg = client_avgs.get(payment_format)
+                if avg is None:
+                    continue
+                try:
+                    tx = transaction_item.TransactionItem(*row[1:])
+                    if tx.is_sent_amount_below(avg / 100):
+                        output_batch.append(tx.to_fields())
+                except Exception as e:
+                    logging.error(
+                        f"[QUERY {QUERY_NUMBER}] Error processing spill row: {e}"
+                    )
+
+            os.remove(path)
+            try:
+                os.rmdir(os.path.dirname(path))
+            except OSError:
+                pass
+
+        self._append_output_rows(client_id, output_batch)
 
     def _try_send_eof(self, client_id: str, msg_hash: str):
         with self.eof_coord_lock:
@@ -288,9 +326,8 @@ class AvgJoiner:
                 if tx.is_sent_amount_below(avg / 100):
                     output_batch.append(tx.to_fields())
 
+            self._flush_spill_to_disk(client_id)
             self._append_output_rows(client_id, output_batch)
-
-            self._flush_all_spill_batches(client_id)
             self._last_sp_hash = h
             self._save_checkpoint()
             ack()

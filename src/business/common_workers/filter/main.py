@@ -51,7 +51,6 @@ class Filter:
         self._last_msg_hash: str | None = None
         self._heartbeat = heartbeat
         self._disk_counts: dict[str, int] = {}
-        self._disk_sent: set[str] = set()
 
         if INPUT_EXCHANGE_NAME and INPUT_ROUTING_KEYS:
             self.input_queue = middleware.MessageMiddlewareExchangeRabbitMQ(
@@ -84,23 +83,13 @@ class Filter:
         if state is not None:
             self._last_msg_hash = state.get("last_msg_hash")
             self.eof_seen = set(state.get("eof_seen", []))
-            self._disk_sent = set(state.get("disk_sent", []))
             logging.info(f"[QUERY {QUERY_NUMBER}] [FILTER] Resumed from checkpoint")
-
         if os.path.isdir(DATA_DIR):
             for entry in os.listdir(DATA_DIR):
                 client_dir = os.path.join(DATA_DIR, entry)
                 if os.path.isdir(client_dir):
                     path = self._file_path(entry)
-                    if entry in self._disk_sent:
-                        if os.path.exists(path):
-                            os.remove(path)
-                        try:
-                            os.rmdir(client_dir)
-                        except OSError:
-                            pass
-                        self._disk_sent.discard(entry)
-                    elif os.path.exists(path):
+                    if os.path.exists(path):
                         logging.info(
                             f"[QUERY {QUERY_NUMBER}] [FILTER] Recovering spilled rows for client {entry}"
                         )
@@ -112,7 +101,6 @@ class Filter:
             {
                 "last_msg_hash": self._last_msg_hash,
                 "eof_seen": list(self.eof_seen),
-                "disk_sent": list(self._disk_sent),
             },
         )
 
@@ -126,10 +114,19 @@ class Filter:
 
         path = self._file_path(client_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + ".tmp"
 
-        with open(path, "a", newline="") as f:
+        existing_rows = []
+        if os.path.exists(path):
+            with open(path, "r", newline="") as f:
+                existing_rows = list(csv.reader(f))
+
+        with open(tmp_path, "w", newline="") as f:
             writer = csv.writer(f)
+            writer.writerows(existing_rows)
             writer.writerows(rows)
+        os.replace(tmp_path, path)
+
         self._disk_counts[client_id] = self._disk_counts.get(client_id, 0) + len(rows)
 
     def _send_disk_rows(self, client_id):
@@ -140,14 +137,11 @@ class Filter:
         with open(path, "r", newline="") as f:
             rows = list(csv.reader(f))
         self._send_batch(client_id, rows)
-        self._disk_sent.add(client_id)
-        self._save_checkpoint()
         os.remove(path)
         try:
             os.rmdir(os.path.dirname(path))
         except OSError:
             pass
-        self._disk_sent.discard(client_id)
         self._disk_counts[client_id] = 0
 
     def _parse_transaction(self, fields):
