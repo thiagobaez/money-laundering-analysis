@@ -11,13 +11,18 @@ Bajar los datasets de [Kaggle - IBM Transactions for Anti-Money Laundering](http
 
 ## Expected Output
 
-Bajar los [archivos de salida esperada](https://drive.google.com/drive/folders/1bOl9gDLcdXP1tUwwhLBHqjyLvgr9zjMQ?usp=sharing) y guardarlos dentro de la carpeta `expected` en el repositorio.
+Bajar los [archivos de salida esperada](https://drive.google.com/drive/folders/1bOl9gDLcdXP1tUwwhLBHqjyLvgr9zjMQ?usp=sharing) y guardarlos dentro de la carpeta `expected` en el repositorio. Se deben guardar las carpetas tal cual aparecen:
 
+```
+money-laundering-analysis/
+└── expected/
+    ├── HI-Medium_Trans.csv/
+    └── HI-Small_Trans.csv/
+```
 ---
 
 ## Uso rápido
 
-```
 1. make generate      -> genera un docker-compose con los workers deseados
 2. make switch-query  -> elige qué compose usar
 3. make up            -> levanta el sistema y sigue los logs
@@ -33,7 +38,7 @@ make compare          -> compara manualmente contra los expected files.
 
 ### make generate
 
-Lanza un asistente interactivo para elegir la query y configurar los workers. Cada parámetro muestra su valor por defecto entre corchetes, podes dar enter para aceptar ese valor o escribir otro y luego dar enter.
+Lanza un asistente interactivo para elegir la query y configurar los workers. Cada parámetro muestra su valor por defecto entre corchetes; presioná Enter para aceptarlo o escribí otro valor.
 
 ```
 $ make generate
@@ -42,17 +47,31 @@ Opciones: 1, 3, 4, 5, all
 Que compose queres generar? [1/3/4/5/all]: 5
 
 [ Query 5 — parametros ]
-  input_file                   [HI-Medium_Trans.csv]:
+  n_clients                    [1]:
+  Archivos disponibles en datasets/:
+    1) HI-Medium_Trans.csv
+    2) HI-Small_Trans.csv
+  input_file client 0          [HI-Medium_Trans.csv]:
   filter_fmt    (workers)      [7]:
   converter     (workers)      [3]:
   filter_amount (workers)      [2]:
   batch_size                   [10000]:
+  -- Chaos Monkey --
+  agregar chaos monkey?        [s/n, default=n]:
+  -- Watchdog --
+  agregar watchdog?            [s/n, default=n]:
   output file                  [docker-compose-q5.yaml]:
 ```
 
-La opción `all` genera un compose que corre las 4 queries a la vez con un solo cliente. Los archivos se guardan en la raíz del proyecto.
+El asistente lista los datasets disponibles en `datasets/` y permite elegirlos por número. El nombre del archivo de salida también se puede cambiar.
 
-Los scripts también se pueden correr directamente desde generate/:
+Chaos Monkey: si se activa, se agrega un container que mata workers al azar cada N segundos. Excluye rabbitmq y el propio chaos monkey. Podes elegir si excluir o no los clientes y gateway para pruebas generales.
+
+Watchdog: si se activa, se despliegan 3 instancias de watchdog en anillo y se inyecta `WATCHDOG_COUNT` a todos los workers. Se puede configurar el timeout de heartbeat (segundos sin latido para considerar un worker caído).
+
+La opción `all` genera un compose que corre las 4 queries a la vez con un solo cliente y permite configurar cada query por separado antes de elegir chaos monkey y watchdog.
+
+Los scripts también se pueden correr directamente desde `generate/`:
 
 | Query | Script |
 | ----- | ------ |

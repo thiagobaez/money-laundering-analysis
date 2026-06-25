@@ -11,6 +11,8 @@ def generate_compose_q4(
     batch_size: int = 10000,
     chaos_monkey: bool = False,
     chaos_kill_interval: int = 30,
+    chaos_exclude_clients: bool = True,
+    chaos_exclude_gateway: bool = True,
     watchdog: bool = False,
     watchdog_timeout: int = 30,
     watchdog_count: int = 3,
@@ -244,14 +246,18 @@ def generate_compose_q4(
                 env.append(f"WATCHDOG_COUNT={watchdog_count}")
 
     if chaos_monkey:
-        client_names = ",".join(f"client{i}" for i in range(len(input_files)))
+        excluded = ["rabbitmq", "chaos_monkey"]
+        if chaos_exclude_gateway:
+            excluded.append("gateway")
+        if chaos_exclude_clients:
+            excluded.extend(f"client{i}" for i in range(len(input_files)))
         services["chaos_monkey"] = {
             "build": {"context": "./src/", "dockerfile": "chaos_monkey/Dockerfile"},
             "container_name": "chaos_monkey",
             "volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
             "environment": [
                 f"KILL_INTERVAL={chaos_kill_interval}",
-                f"EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,gateway,{client_names}",
+                f"EXCLUDE_CONTAINERS={','.join(excluded)}",
             ],
             "depends_on": dict(rabbitmq_healthy),
         }
@@ -283,7 +289,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate docker-compose-q4.yaml")
     parser.add_argument("--input-files", nargs="+", default=["HI-Medium_Trans.csv"])
     parser.add_argument("--output", type=str, default="docker-compose-q4.yaml")
-    parser.add_argument("--batch-size", type=int, default=20000)
+    parser.add_argument("--batch-size", type=int, default=10000)
     parser.add_argument("--filter-usd", type=int, default=3)
     parser.add_argument("--filter-date", type=int, default=3)
     parser.add_argument("--split", type=int, default=3)
