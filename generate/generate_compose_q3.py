@@ -22,6 +22,7 @@ def generate_compose_q3(
 
     avg_joiner_routing_keys = ",".join([f"avg_joiner_{i}" for i in range(n_avg_joiner)])
     avg_routing_keys = ",".join([f"avg_{i}" for i in range(n_avg)])
+    second_period_queues = ",".join([f"second_period_queue_{i}" for i in range(n_avg_joiner)])
 
     for i, f in enumerate(input_files):
         services[f"client{i}"] = {
@@ -91,7 +92,7 @@ def generate_compose_q3(
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
-                "SECOND_PERIOD_QUEUE=second_period_queue",
+                f"SECOND_PERIOD_QUEUE=second_period_queue_{i}",
                 f"AVG_QUEUE=avg_joiner_{i}",
                 "OUTPUT_QUEUE=results_queue",
                 f"AVG_JOINER_AMOUNT={n_avg_joiner}",
@@ -139,12 +140,13 @@ def generate_compose_q3(
                 **filter_usd_depends,
                 **avg_depends,
             },
+            "volumes": [f"./data/split_date_{i}:/data"],
             "environment": [
                 "QUERY_NUMBER=3",
                 "MOM_HOST=rabbitmq",
                 "INPUT_QUEUE=q3_split_queue",
-                f"FIRST_PERIOD_QUEUES={','.join([f'avg_queue_{i}' for i in range(n_avg)])}",
-                "SECOND_PERIOD_QUEUE=second_period_queue",
+                f"FIRST_PERIOD_QUEUES={','.join([f'avg_queue_{j}' for j in range(n_avg)])}",
+                f"SECOND_PERIOD_QUEUES={second_period_queues}",
                 "FIRST_PERIOD_GE=2022-09-01",
                 "FIRST_PERIOD_LE=2022-09-05",
                 "SECOND_PERIOD_GE=2022-09-06",
