@@ -127,8 +127,8 @@ class SplitDate:
                 )
                 for q in self.first_period_queues:
                     q.send(eof)
-                idx = self._get_second_queue_idx(client_id)
-                self.second_period_queues[idx].send(eof)
+                for q in self.second_period_queues:
+                    q.send(eof)
                 self._last_msg_hash = msg_hash
                 self._save_checkpoint()
                 self.eof_seen.discard(client_id)

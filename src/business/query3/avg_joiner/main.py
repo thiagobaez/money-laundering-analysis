@@ -250,30 +250,18 @@ class AvgJoiner:
                 return
 
             if len(fields) == 1 or (len(fields) == 3 and fields[1] == "EOF"):
-                counter = AVG_JOINER_AMOUNT if len(fields) == 1 else int(fields[2])
                 logging.info(
-                    f"[QUERY {QUERY_NUMBER}] second_period EOF client={client_id} counter={counter}"
+                    f"[QUERY {QUERY_NUMBER}] second_period EOF client={client_id}"
                 )
-                if client_id not in self.eof_seen:
-                    self.eof_seen.add(client_id)
 
-                    if counter > 1:
-                        self.second_period_consumer.send(
-                            message_protocol.internal.serialize(
-                                [client_id, "EOF", counter - 1]
-                            )
-                        )
+                with self.eof_coord_lock:
+                    self.sp_eof_done.add(client_id)
 
-                    with self.eof_coord_lock:
-                        self.sp_eof_done.add(client_id)
-
-                    self._try_send_eof(client_id, h)
-                else:
-                    self.second_period_consumer.send(
-                        message_protocol.internal.serialize([client_id, "EOF", counter])
-                    )
-
+                self._last_sp_hash = h
                 self._save_checkpoint()
+
+                self._try_send_eof(client_id, h)
+
                 ack()
                 return
 
