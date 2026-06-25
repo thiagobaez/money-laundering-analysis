@@ -35,6 +35,8 @@ services:
     - SERVER_HOST=gateway
     - SERVER_PORT=5678
     - BATCH_SIZE=10000
+    - CONTAINER_NAME=gateway
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_0:
     build:
       context: ./src/
@@ -57,6 +59,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_0
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_1:
     build:
       context: ./src/
@@ -79,6 +82,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_1
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_2:
     build:
       context: ./src/
@@ -101,6 +105,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_2
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_3:
     build:
       context: ./src/
@@ -123,6 +128,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_3
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_4:
     build:
       context: ./src/
@@ -145,6 +151,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_4
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_5:
     build:
       context: ./src/
@@ -167,6 +174,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_5
+    - WATCHDOG_COUNT=3
   filter_q5_fmt_6:
     build:
       context: ./src/
@@ -189,6 +197,7 @@ services:
     - PAY_FMTS=Wire,ACH
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_fmt_6
+    - WATCHDOG_COUNT=3
   converter_0:
     build:
       context: ./src/
@@ -221,6 +230,7 @@ services:
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
     - CONTAINER_NAME=converter_0
+    - WATCHDOG_COUNT=3
   converter_1:
     build:
       context: ./src/
@@ -246,6 +256,7 @@ services:
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
     - CONTAINER_NAME=converter_1
+    - WATCHDOG_COUNT=3
   converter_2:
     build:
       context: ./src/
@@ -271,6 +282,7 @@ services:
     - FRANKFURTER_BASE=https://api.frankfurter.dev/v2
     - BATCH_SIZE=10000
     - CONTAINER_NAME=converter_2
+    - WATCHDOG_COUNT=3
   filter_q5_amount_0:
     build:
       context: ./src/
@@ -296,6 +308,7 @@ services:
     - MAX_AMOUNT=1.0
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_amount_0
+    - WATCHDOG_COUNT=3
   filter_q5_amount_1:
     build:
       context: ./src/
@@ -318,6 +331,7 @@ services:
     - MAX_AMOUNT=1.0
     - BATCH_SIZE=10000
     - CONTAINER_NAME=filter_q5_amount_1
+    - WATCHDOG_COUNT=3
   rabbitmq:
     build:
       context: ./src/
@@ -334,16 +348,61 @@ services:
     ports:
     - 5672:5672
     - 15672:15672
-  watchdog:
+  watchdog_0:
     build:
       context: ./src/
       dockerfile: watchdog/Dockerfile
-    container_name: watchdog
+    container_name: watchdog_0
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - MOM_HOST=rabbitmq
     - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=0
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
+    depends_on:
+      rabbitmq: *id001
+  watchdog_1:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog_1
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=1
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
+    depends_on:
+      rabbitmq: *id001
+  watchdog_2:
+    build:
+      context: ./src/
+      dockerfile: watchdog/Dockerfile
+    container_name: watchdog_2
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+    - MOM_HOST=rabbitmq
+    - HEARTBEAT_TIMEOUT=10
+    - WATCHDOG_ID=2
+    - WATCHDOG_COUNT=3
+    - WATCHDOG_HEARTBEAT_INTERVAL=3
+    - WATCHDOG_TIMEOUT=10
+    - REVIVE_INTERVAL=5
+    - WORKER_EXCHANGE=heartbeat_exchange
+    - PEER_EXCHANGE=watchdog_exchange
     depends_on:
       rabbitmq: *id001
   chaos_monkey:
@@ -355,6 +414,6 @@ services:
     - /var/run/docker.sock:/var/run/docker.sock
     environment:
     - KILL_INTERVAL=60
-    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,watchdog,gateway,client
+    - EXCLUDE_CONTAINERS=rabbitmq,chaos_monkey,gateway,client
     depends_on:
       rabbitmq: *id001
