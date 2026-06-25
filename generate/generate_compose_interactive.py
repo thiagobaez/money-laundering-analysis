@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generador interactivo de docker-compose.
 Para cada parametro muestra el valor por defecto entre corchetes;

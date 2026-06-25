@@ -84,7 +84,9 @@ class OgDetect:
         if os.path.exists(client_dir):
             shutil.rmtree(client_dir)
 
-        eof = message_protocol.internal.serialize([client_id, QUERY_NUMBER, CONTAINER_NAME])
+        eof = message_protocol.internal.serialize(
+            [client_id, QUERY_NUMBER, CONTAINER_NAME]
+        )
         for routing_key in OUTPUT_ROUTING_KEYS:
             self.output_queue.send(eof, routing_key)
 

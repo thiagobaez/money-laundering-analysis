@@ -46,8 +46,12 @@ class SgDetect:
             return
         self._last_origins_hash = state.get("last_origins_hash")
         self._last_destinations_hash = state.get("last_destinations_hash")
-        self.origins_eofs = {k: set(v) for k, v in state.get("origins_eofs", {}).items()}
-        self.destinations_eofs = {k: set(v) for k, v in state.get("destinations_eofs", {}).items()}
+        self.origins_eofs = {
+            k: set(v) for k, v in state.get("origins_eofs", {}).items()
+        }
+        self.destinations_eofs = {
+            k: set(v) for k, v in state.get("destinations_eofs", {}).items()
+        }
         logging.info(f"[QUERY {QUERY_NUMBER}] [SG_DETECT] Resumed from checkpoint")
 
     def _save_checkpoint(self):
@@ -58,7 +62,9 @@ class SgDetect:
                     "last_origins_hash": self._last_origins_hash,
                     "last_destinations_hash": self._last_destinations_hash,
                     "origins_eofs": {k: list(v) for k, v in self.origins_eofs.items()},
-                    "destinations_eofs": {k: list(v) for k, v in self.destinations_eofs.items()},
+                    "destinations_eofs": {
+                        k: list(v) for k, v in self.destinations_eofs.items()
+                    },
                 },
             )
 

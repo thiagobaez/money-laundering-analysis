@@ -125,7 +125,6 @@ class Split:
             ack()
             return
         try:
-
             h = checkpoint.msg_hash(message)
             if h == self._last_msg_hash:
                 ack()
@@ -139,7 +138,6 @@ class Split:
                 self._save_checkpoint()
                 ack()
                 return
-
 
             for row in fields[2]:
                 tx = self._parse_transaction(row)

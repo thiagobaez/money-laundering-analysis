@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-
-
 import yaml
 import argparse
 
@@ -32,7 +29,7 @@ def generate_compose_all(
     services = {}
     rabbitmq_healthy = {"rabbitmq": {"condition": "service_healthy"}}
 
-    num_expected_eofs = 4  # Q1=1, Q3=1 (grouped by AVG_JOINER_AMOUNT), Q4=1 (grouped by SG_DETECT_AMOUNT), Q5=1
+    num_expected_eofs = 4
 
     q4_origin_rks = ",".join([f"tx_origin_{i + 1}" for i in range(q4_n_detect)])
     q4_dest_rks = ",".join([f"tx_destination_{i + 1}" for i in range(q4_n_detect)])
@@ -440,6 +437,7 @@ def generate_compose_all(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            "CONTAINER_NAME=gateway",
         ],
     }
 
@@ -505,23 +503,18 @@ def main():
     )
     parser.add_argument("--input-files", nargs="+", default=["HI-Medium_Trans.csv"])
     parser.add_argument("--output", type=str, default="docker-compose-all.yaml")
-    # shared filter_usd
     parser.add_argument("--filter-usd", type=int, default=3)
     parser.add_argument("--filter-usd-batch-size", type=int, default=10000)
-    # q1
     parser.add_argument("--q1-filter-amount", type=int, default=3)
     parser.add_argument("--q1-batch-size", type=int, default=10000)
-    # q3
     parser.add_argument("--q3-split-date", type=int, default=3)
     parser.add_argument("--q3-avg", type=int, default=2)
     parser.add_argument("--q3-avg-joiner", type=int, default=5)
     parser.add_argument("--q3-batch-size", type=int, default=1000)
-    # q4
     parser.add_argument("--q4-filter-date", type=int, default=3)
     parser.add_argument("--q4-split", type=int, default=3)
     parser.add_argument("--q4-detect", type=int, default=3)
     parser.add_argument("--q4-batch-size", type=int, default=20000)
-    # q5
     parser.add_argument("--q5-filter-fmt", type=int, default=7)
     parser.add_argument("--q5-converter", type=int, default=3)
     parser.add_argument("--q5-filter-amount", type=int, default=2)

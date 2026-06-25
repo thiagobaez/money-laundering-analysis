@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import yaml
 import argparse
 
@@ -51,6 +50,7 @@ def generate_compose_q3(
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
             f"BATCH_SIZE={batch_size}",
+            "CONTAINER_NAME=gateway",
         ],
     }
 

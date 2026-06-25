@@ -19,6 +19,7 @@ REVIVE_INTERVAL = float(os.environ["REVIVE_INTERVAL"])
 WORKER_EXCHANGE = os.environ["WORKER_EXCHANGE"]
 PEER_EXCHANGE = os.environ["PEER_EXCHANGE"]
 
+
 class Watchdog:
     def __init__(self):
         self._lock = threading.Lock()
@@ -35,10 +36,16 @@ class Watchdog:
             MOM_HOST, PEER_EXCHANGE, [f"peer_{WATCHDOG_ID}"]
         )
 
-        peer_routing_keys = [f"peer_{i}" for i in range(WATCHDOG_COUNT) if i != WATCHDOG_ID]
-        self._sender = MessageMiddlewareExchangeRabbitMQ(
-            MOM_HOST, PEER_EXCHANGE, peer_routing_keys
-        ) if peer_routing_keys else None
+        peer_routing_keys = [
+            f"peer_{i}" for i in range(WATCHDOG_COUNT) if i != WATCHDOG_ID
+        ]
+        self._sender = (
+            MessageMiddlewareExchangeRabbitMQ(
+                MOM_HOST, PEER_EXCHANGE, peer_routing_keys
+            )
+            if peer_routing_keys
+            else None
+        )
 
     def _on_worker_hb(self, body, ack, nack):
         try:
@@ -47,7 +54,9 @@ class Watchdog:
                 self._last_seen[data["container"]] = time.time()
             ack()
         except Exception as e:
-            logging.error(f"[WATCHDOG {WATCHDOG_ID}] Error processing worker heartbeat: {e}")
+            logging.error(
+                f"[WATCHDOG {WATCHDOG_ID}] Error processing worker heartbeat: {e}"
+            )
             nack()
 
     def _on_peer_hb(self, body, ack, nack):
@@ -58,7 +67,9 @@ class Watchdog:
                 self._peer_last_seen[peer_id] = time.time()
             ack()
         except Exception as e:
-            logging.error(f"[WATCHDOG {WATCHDOG_ID}] Error processing peer heartbeat: {e}")
+            logging.error(
+                f"[WATCHDOG {WATCHDOG_ID}] Error processing peer heartbeat: {e}"
+            )
             nack()
 
     def _is_leader(self):
@@ -114,7 +125,9 @@ class Watchdog:
                             self._peer_last_seen[monitored_id] = time.time()
 
             if not self._is_leader():
-                logging.debug(f"[WATCHDOG {WATCHDOG_ID}] Not leader, skipping worker check")
+                logging.debug(
+                    f"[WATCHDOG {WATCHDOG_ID}] Not leader, skipping worker check"
+                )
                 continue
 
             logging.debug(f"[WATCHDOG {WATCHDOG_ID}] Leader — checking workers")

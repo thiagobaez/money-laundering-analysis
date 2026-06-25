@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import yaml
 import argparse
 
@@ -220,6 +219,7 @@ def generate_compose_q4(
             "PYTHONUNBUFFERED=1",
             "SERVER_HOST=gateway",
             "SERVER_PORT=5678",
+            "CONTAINER_NAME=gateway",
         ],
     }
 

@@ -80,7 +80,9 @@ class DtDetect:
             shutil.rmtree(client_dir)
 
         self.output_queue.send(
-            message_protocol.internal.serialize([client_id, QUERY_NUMBER, CONTAINER_NAME])
+            message_protocol.internal.serialize(
+                [client_id, QUERY_NUMBER, CONTAINER_NAME]
+            )
         )
 
     def _on_message(self, message, ack, nack):
