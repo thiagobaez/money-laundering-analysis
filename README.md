@@ -113,6 +113,50 @@ make lint
 
 ---
 
+### Heartbeats
+
+Cada worker que debe ser monitoreado corre un HeartbeatSender en un hilo daemon. Cada 3 segundos publica un JSON
+
+```json
+{"container": CONTAINER_NAME, "ts": <timestamp>}
+```
+
+al exchange heartbeat_exchange de Rabbit usando routing keys: watchdog_0, watchdog_1, watchdog_2. Es decir, el mismo heartbeat llega a los 3 watchdogs simultáneamente.
+
+Del lado del watchdog, cada instancia escucha en su propia routing key. Cuando recibe un heartbeat, actualiza last_seen[container_name]. Cada 5 segundos , el watchdog que sea líder itera sobre ese diccionario y compara el timestamp actual contra el último heartbeat. Si el gap supera HEARTBEAT_TIMEOUT segundos, llama a docker start <container>.
+
+El worker manda a todos los watchdogs (no solo al líder) porque no sabe quién es el líder en cada momento. Así, si el líder cae y otro toma el rol, ya tiene el historial de heartbeats actualizado y puede detectar workers caídos sin período de arranque en frío.
+
+Un detalle importante: si el worker no se puede conectar a Rabbit (por ejemplo, justo después de reiniciarse), el HeartbeatSender reintenta la conexión automáticamente con un sleep de 5 segundos entre intentos, sin matar al worker.
+
+### Watchdog 
+
+El sistema incluye un mecanismo de watchdog para detectar y recuperar workers caídos automáticamente.
+
+Arquitectura: Anillo de Watchdogs
+
+Se despliegan 3 instancias de watchdog (watchdog_0, watchdog_1, watchdog_2) organizadas en una forma de anillo. Cada watchdog monitorea al watchdog anterior (watchdog_i monitorea a watchdog_(i-1) % 3), de modo que si uno cae, el siguiente lo levanta. Esto garantiza que el sistema de monitoreo en sí también sea tolerante a fallos.
+
+```txt
+watchdog_2 ←── watchdog_0
+    │                ↑
+    └──→ watchdog_1 ─┘
+```
+
+Líder dinámico
+
+Solo el watchdog con el ID más bajo que esté vivo actúa como líder y monitorea los workers. Si el líder se cae, el siguiente watchdog con menor ID toma el liderazgo. Cada watchdog evalúa si existe algún peer con ID menor que haya enviado heartbeat recientemente. Si no existe ninguno, se declara líder.
+
+Heartbeats de workers
+
+Cada worker envía periódicamente un heartbeat (cada 3 segundos por defecto) al exchange de RabbitMQ heartbeat_exchange. El mensaje incluye el nombre del container y un timestamp. El heartbeat se envía a todos los watchdogs simultáneamente mediante routing keys individuales (watchdog_0, watchdog_1, watchdog_2), de modo que cualquiera de ellos puede tomar el liderazgo con información actualizada.
+
+Si un worker no envía heartbeat durante más de HEARTBEAT_TIMEOUT segundos, el líder lo detecta e intenta levantarlo via Docker API (docker start <container>).
+
+Heartbeats entre watchdogs (peers)
+
+Los watchdogs también se envían heartbeats entre sí a través del exchange watchdog_exchange, con routing keys peer_0, peer_1, peer_2. Si un watchdog detecta que el peer que monitorea no envió heartbeat en más de WATCHDOG_TIMEOUT segundos, lo reinicia.
+
 ### chaos monkey
 
 Al generar con `make generate` y elegir `all`, al final pregunta si querés agregar el chaos monkey y con qué intervalo (en segundos). Si lo activás, se agrega un container que mata workers al azar cada N segundos para testear tolerancia a fallos.
@@ -120,8 +164,6 @@ Al generar con `make generate` y elegir `all`, al final pregunta si querés agre
 Por defecto excluye rabbitmq, el propio chaos monkey y los clientes. El resto de los workers son candidatos.
 
 Para que funcione el container necesita acceso al socket de docker, que se monta automáticamente cuando se genera el compose con esta opción.
-
-
 
 ## Queries
 
